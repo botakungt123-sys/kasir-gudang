@@ -247,6 +247,11 @@ dialog form{display:flex;flex-direction:column;gap:12px}
       </div>
       <p class="hint">Pajak ditambahkan ke tagihan pelanggan untuk penjualan langsung dan tidak dihitung sebagai pendapatan. Isi 0 jika tidak memungut.</p>
     </div>
+    <div class="panel" id="panelCetak">
+      <h2>Printer struk</h2>
+      <div class="row"><label style="flex:0 1 280px">Cara cetak di perangkat ini<select id="c-mode"><option value="dialog">Dialog cetak sistem</option><option value="ble">Bluetooth langsung (printer BLE)</option><option value="rawbt">Lewat aplikasi RawBT</option></select></label><button type="button" class="btn" id="btnBtPilih" data-act="btPilih">Pilih printer Bluetooth</button><button type="button" class="btn" data-act="tesCetak">Tes cetak</button></div>
+      <p class="hint">Pilihan ini tersimpan per perangkat. Bluetooth langsung hanya untuk printer BLE dan printer perlu dipilih lagi setelah aplikasi ditutup. Printer Bluetooth klasik: pasang aplikasi RawBT, sambungkan printer di sana, lalu pilih Lewat aplikasi RawBT. Jumlah karakter per baris mengikuti Lebar kertas struk (58 mm = 32, 80 mm = 48).</p>
+    </div>
     <div class="panel">
       <h2>Akun dan cadangan data</h2>
       <p class="hint">Masuk sebagai <b id="akun"></b>. Ekspor menyimpan semua data ke satu file JSON. Impor menambahkan isi file ke data sekarang; data dengan kode yang sama ditimpa.</p>
@@ -313,7 +318,7 @@ const CH={offline:'Langsung',gofood:'GoFood',grabfood:'GrabFood',shopeefood:'Sho
 const DEF={toko:'Toko Saya',modalAwal:0,pajak:0,margin:40,bulat:500,kertas:58,kaki:'Terima kasih',kemasan:[],ch:{gofood:{fee:20,markup:0,auto:true},grabfood:{fee:20,markup:0,auto:true},shopeefood:{fee:20,markup:0,auto:true}}};
 const S={products:{},menus:{},purchases:{},sales:{},settings:JSON.parse(JSON.stringify(DEF))};
 const LS='kasir-gudang-v1';
-let db=null,mode='memuat',cart={},chan='offline',editId=null,editM=null,mD={comps:[],opts:[]},kD=[],busy=false,akhir=null;const DI_CLAUDE=!!(window.claude&&window.claude.use);
+let db=null,mode='memuat',cart={},chan='offline',editId=null,editM=null,mD={comps:[],opts:[]},kD=[],busy=false,akhir=null,strukNow=null,btDev=null,btCh=null;const DI_CLAUDE=!!(window.claude&&window.claude.use);
 
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -479,8 +484,9 @@ const A={
       await del('sales',id);toast('Penjualan dibatalkan, stok dikembalikan')})},
   kAdd(){sinkK();kD.push({pid:'',qty:1});rowsK()},kDel(i){sinkK();kD.splice(+i,1);rowsK()},
   strukAkhir(){if(akhir)bukaStruk(akhir)},struk(id){if(S.sales[id])bukaStruk(S.sales[id])},tutupDlgS(){$('#dlgS').close()},
-  cetak(){let st=$('#pgStyle');if(!st){st=document.createElement('style');st.id='pgStyle';document.head.appendChild(st)}
-    st.textContent='@page{size:'+(num(S.settings.kertas)||58)+'mm auto;margin:0}';$('#printArea').innerHTML=$('#strukBox').innerHTML;$('#dlgS').close();document.body.classList.add('cetak');setTimeout(()=>window.print(),80)},
+  cetak(){if(strukNow)kirimStruk(strukNow)},
+  btPilih(){btSambung(true).then(()=>toast('Tersambung: '+(btDev.name||'printer'))).catch(btGagal)},
+  tesCetak(){kirimStruk({ts:Date.now(),channel:'offline',items:[{name:'Tes cetak Nasi Ayam Geprek',qty:2,price:18000},{name:'Es Teh',qty:1,price:4000}],sub:40000,pajak:0,bayar:50000},true)},
   unduhExcel(){
     const st=S.settings,per=$('#periode').value,sejak=per==='semua'?0:per==='hari'?new Date().setHours(0,0,0,0):Date.now()-num(per)*864e5,ps=prodList();
     const tg=t=>{const d=new Date(t),z=n=>String(n).padStart(2,'0');return d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate())+' '+z(d.getHours())+':'+z(d.getMinutes())};
@@ -566,6 +572,39 @@ $('#dlgMForm').addEventListener('submit',e=>{e.preventDefault();sinkM();const na
   if(!m.comps.length){toast('Tambahkan minimal satu isi menu');return}
   if(!m.auto&&!(m.price>0)){toast('Isi harga jual manual atau centang harga otomatis');return}
   const id=editM||newId();$('#dlgM').close();cart={};run(async()=>{await put('menus',id,{...m,name,kind:$('#m-kind').value});toast('Menu tersimpan')})});
+// ---------- cetak struk: dialog sistem / Bluetooth BLE (ESC/POS) / RawBT ----------
+const cetakMode=()=>{try{return localStorage.getItem('kg-cetak')||'dialog'}catch(e){return'dialog'}};
+function escpos(s){const st=S.settings,W=(num(st.kertas)||58)>=80?48:32,o=[];
+  const asc=t=>String(t==null?'':t).normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^\x20-\x7e]/g,'?');
+  const tx=t=>{t=asc(t);for(let i=0;i<t.length;i++)o.push(t.charCodeAt(i));o.push(10)};
+  const wrap=t=>{t=asc(t);while(t.length>W){tx(t.slice(0,W));t=t.slice(W)}tx(t)};
+  const lr=(a,b)=>{a=asc(a);b=asc(b);const sp=W-a.length-b.length;tx(sp>=1?a+' '.repeat(sp)+b:a.slice(0,Math.max(W-b.length-1,0))+' '+b)};
+  const a=n=>Math.round(n||0).toLocaleString('id-ID'),tagih=s.sub+(s.pajak||0),garis=()=>tx('-'.repeat(W)),toko=asc(st.toko||'Toko');
+  o.push(27,64,27,97,1,27,69,1);if(toko.length<=W/2)o.push(29,33,17);wrap(toko);o.push(29,33,0,27,69,0);
+  tx(new Date(s.ts).toLocaleString('id-ID',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}));if(s.channel!=='offline')tx(CH[s.channel]||'');
+  o.push(27,97,0);garis();
+  s.items.forEach(i=>{wrap(i.name);lr(nf(i.qty)+' x '+a(i.price),a(i.price*i.qty))});garis();
+  lr('Subtotal',a(s.sub));if(s.pajak)lr('Pajak',a(s.pajak));o.push(27,69,1);lr('TOTAL','Rp '+a(tagih));o.push(27,69,0);
+  if(s.bayar>0){lr('Bayar',a(s.bayar));lr('Kembali',a(Math.max(s.bayar-tagih,0)))}
+  garis();if(st.kaki){o.push(27,97,1);wrap(st.kaki);o.push(27,97,0)}
+  o.push(10,10,10,10);return new Uint8Array(o)}
+const BT_SVC=['000018f0-0000-1000-8000-00805f9b34fb','e7810a71-73ae-499d-8c15-faa9aef0c3f2','49535343-fe7d-4ae5-8fa9-9fafd205e455','0000ff00-0000-1000-8000-00805f9b34fb','0000ffe0-0000-1000-8000-00805f9b34fb','0000fff0-0000-1000-8000-00805f9b34fb','0000ae30-0000-1000-8000-00805f9b34fb','0000af30-0000-1000-8000-00805f9b34fb'];
+async function btSambung(pilih){
+  if(!navigator.bluetooth)throw{pesan:'Browser ini tidak mendukung Bluetooth langsung. Pakai Chrome Android atau pilih Lewat aplikasi RawBT.'};
+  if(pilih||!btDev){btCh=null;btDev=await navigator.bluetooth.requestDevice({acceptAllDevices:true,optionalServices:BT_SVC})}
+  if(!btDev.gatt.connected||!btCh){const srv=await btDev.gatt.connect();btCh=null;
+    for(const sv of await srv.getPrimaryServices()){for(const c of await sv.getCharacteristics())if(c.properties.writeWithoutResponse||c.properties.write){btCh=c;break}if(btCh)break}
+    if(!btCh)throw{pesan:'Printer tersambung tetapi saluran tulisnya tidak dikenali. Coba Lewat aplikasi RawBT.'}}
+  return btCh}
+async function btKirim(d){const c=await btSambung(false);for(let i=0;i<d.length;i+=20){const p=d.slice(i,i+20);if(c.properties.writeWithoutResponse)await c.writeValueWithoutResponse(p);else await c.writeValueWithResponse(p);await new Promise(r=>setTimeout(r,15))}}
+const btGagal=e=>toast(e&&e.pesan||(e&&e.name==='NotFoundError'?'Tidak ada printer yang dipilih.':'Gagal mencetak: '+(e&&e.message||'printer tidak terjangkau')));
+function kirimStruk(s,tes){const m=cetakMode();
+  if(m==='dialog'){if(tes){bukaStruk(s);return}
+    let st=$('#pgStyle');if(!st){st=document.createElement('style');st.id='pgStyle';document.head.appendChild(st)}
+    st.textContent='@page{size:'+(num(S.settings.kertas)||58)+'mm auto;margin:0}';$('#printArea').innerHTML=$('#strukBox').innerHTML;$('#dlgS').close();document.body.classList.add('cetak');setTimeout(()=>window.print(),80);return}
+  const d=escpos(s);if($('#dlgS').open)$('#dlgS').close();
+  if(m==='rawbt'){let b='';for(let i=0;i<d.length;i++)b+=String.fromCharCode(d[i]);location.href='intent:base64,'+btoa(b)+'#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;';return}
+  btKirim(d).then(()=>toast('Struk dikirim ke printer')).catch(btGagal)}
 // Penulis .xlsx minimal (zip tanpa kompresi), tanpa pustaka luar. sheets=[[nama,barisArray],...]
 function mkXlsx(sheets){
   const NS='http://schemas.openxmlformats.org/spreadsheetml/2006/main',HD='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
@@ -601,7 +640,7 @@ function bukaStruk(s){const st=S.settings,a=n=>Math.round(n||0).toLocaleString('
   h+=`<div class="sr t"><span>TOTAL</span><span>Rp ${a(tagih)}</span></div>`;
   if(s.bayar>0)h+=`<div class="sr"><span>Bayar</span><span>${a(s.bayar)}</span></div><div class="sr"><span>Kembali</span><span>${a(Math.max(s.bayar-tagih,0))}</span></div>`;
   h+=`<hr><div class="c">${esc(st.kaki||'')}</div></div>`;
-  $('#strukBox').innerHTML=h;$('#btnCetak').hidden=DI_CLAUDE;$('#strukHint').hidden=!DI_CLAUDE;$('#dlgS').showModal()}
+  strukNow=s;$('#strukBox').innerHTML=h;$('#btnCetak').hidden=DI_CLAUDE;$('#strukHint').hidden=!DI_CLAUDE;$('#dlgS').showModal()}
 function bukaDlg(id){editId=id;const p=id?S.products[id]:null;
   $('#dlgTitle').textContent=p?'Ubah barang':'Beli barang baru';$('#dlgDel').hidden=!p;$('#dlgDel').textContent='Hapus';delete $('#dlgDel').dataset.armed;
   $('#p-jual').checked=p?p.jual!==false:true;$('#p-name').value=p?p.name:'';$('#p-unit').value=p?p.unit||'':'pcs';$('#p-price').value=p?p.price:'';$('#p-margin').value=p?(p.margin!=null?p.margin:p.price>0?Math.round((1-(p.cost||0)/p.price)*1000)/10:num(S.settings.margin)):num(S.settings.margin);$('#p-min').value=p?p.min||0:5;$('#p-stock').value=p?p.stock:'';$('#l-stock').textContent=p?'Stok sekarang (koreksi)':'Stok masuk (satuan pakai)';$('#rowPack').hidden=!!p;$('#p-pack').value='';$('#p-hpack').value='';$('#p-isi').value='';$('#dlgHint').textContent=p?'Untuk barang masuk berikutnya, catat di Pembelian supaya modal ikut terhitung. Ubah stok di sini hanya untuk koreksi (opname).':'Isi pembelian per pack; stok masuk dan HPP per satuan terhitung sendiri. Stok langsung masuk gudang dan tercatat sebagai pembelian pertama.';$('#p-cost').value=p?Math.round((p.cost||0)*100)/100:'';
@@ -616,6 +655,8 @@ document.addEventListener('click',e=>{
   if(b.dataset.tab){tab(b.dataset.tab);return}
   if(b.dataset.confirm&&!b.dataset.armed){b.dataset.armed=1;const t=b.textContent;b.textContent='Yakin?';setTimeout(()=>{if(b.isConnected&&b.dataset.armed){delete b.dataset.armed;b.textContent=t}},3000);return}
   const f=A[b.dataset.act];if(f)f(b.dataset.id)});
+$('#panelCetak').hidden=DI_CLAUDE;$('#c-mode').value=cetakMode();$('#btnBtPilih').hidden=cetakMode()!=='ble';
+$('#c-mode').addEventListener('change',e=>{try{localStorage.setItem('kg-cetak',e.target.value)}catch(x){}$('#btnBtPilih').hidden=e.target.value!=='ble';toast('Cara cetak disimpan di perangkat ini')});
 $('#cari').addEventListener('input',render);$('#bayar').addEventListener('input',render);$('#periode').addEventListener('change',render);
 const r2=n=>Math.round(n*100)/100;
 function sinkBeli(e){const q=num($('#b-pack').value),id=e.target.id;
