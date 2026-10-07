@@ -102,6 +102,11 @@ td.wrapc{white-space:normal;min-width:160px}
 .mrow{align-items:end}
 .chk{flex-direction:row;align-items:center;gap:8px;flex:1 1 100%}
 .chk input{width:auto}
+#printArea{display:none}
+.struk{font:12px/1.35 var(--mono);color:#000;background:#fff;padding:10px;width:100%;border-radius:4px}
+.struk .c{text-align:center}.struk .b{font-weight:700;font-size:14px}.struk hr{border:0;border-top:1px dashed #000;margin:6px 0}
+.sr{display:flex;justify-content:space-between;gap:8px}.sr span:last-child{white-space:nowrap}.sr.t{font-weight:700;font-size:14px}
+@media print{body.cetak>*:not(#printArea){display:none!important}body.cetak{background:#fff}body.cetak #printArea{display:block}.struk{padding:0 2mm}}
 .empty{color:var(--muted);padding:14px 0;margin:0}
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px}
 .tile{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;display:flex;flex-direction:column;gap:2px;min-width:0}
@@ -157,7 +162,7 @@ dialog form{display:flex;flex-direction:column;gap:12px}
       <div class="sum" id="sum"></div>
       <label id="bayarWrap">Uang diterima<input id="bayar" type="number" inputmode="numeric" min="0" placeholder="0"></label>
       <div class="sum" id="kembali"></div>
-      <div class="row"><button class="btn" data-act="kosongkan">Kosongkan</button><button class="btn primary" style="flex:1" id="btnSimpan" data-act="simpanJual">Simpan transaksi</button></div>
+      <div class="row"><button class="btn" data-act="kosongkan">Kosongkan</button><button class="btn" id="btnStruk" data-act="strukAkhir" hidden>Struk terakhir</button><button class="btn primary" style="flex:1" id="btnSimpan" data-act="simpanJual">Simpan transaksi</button></div>
     </div>
   </section>
 
@@ -205,7 +210,7 @@ dialog form{display:flex;flex-direction:column;gap:12px}
 
   <!-- LAPORAN -->
   <section id="v-laporan" class="stack" hidden>
-    <div class="row"><label style="flex:0 1 200px">Periode<select id="periode"><option value="hari">Hari ini</option><option value="7">7 hari terakhir</option><option value="30">30 hari terakhir</option><option value="semua">Semua</option></select></label></div>
+    <div class="row"><label style="flex:0 1 200px">Periode<select id="periode"><option value="hari">Hari ini</option><option value="7">7 hari terakhir</option><option value="30">30 hari terakhir</option><option value="semua">Semua</option></select></label><button class="btn" data-act="unduhExcel">Unduh laporan Excel</button></div>
     <div class="tiles" id="tilesJual"></div>
     <div class="panel">
       <h2>Per saluran penjualan</h2>
@@ -236,6 +241,8 @@ dialog form{display:flex;flex-direction:column;gap:12px}
         <label>Modal awal (Rp)<input id="s-modal" type="number" inputmode="numeric" min="0"></label>
         <label>Pajak penjualan langsung (%)<input id="s-pajak" type="number" inputmode="decimal" min="0" step="any"></label>
         <label>Pembulatan harga (ke atas)<select id="s-bulat"><option value="100">Rp 100</option><option value="500">Rp 500</option><option value="1000">Rp 1.000</option></select></label>
+        <label>Lebar kertas struk<select id="s-kertas"><option value="58">58 mm</option><option value="80">80 mm</option></select></label>
+        <label>Catatan kaki struk<input id="s-kaki" type="text" placeholder="Terima kasih"></label>
         <label>Target margin menu baru (%)<input id="s-margin" type="number" inputmode="decimal" min="0" max="99" step="any"></label>
       </div>
       <p class="hint">Pajak ditambahkan ke tagihan pelanggan untuk penjualan langsung dan tidak dihitung sebagai pendapatan. Isi 0 jika tidak memungut.</p>
@@ -294,14 +301,19 @@ dialog form{display:flex;flex-direction:column;gap:12px}
 <dialog id="dlgO">
   <div class="stack"><h2 id="oTitle">Pilih</h2><div class="stack" id="oList" style="gap:8px"></div><div class="row"><button type="button" class="btn" data-act="tutupDlgO">Batal</button></div></div>
 </dialog>
+<dialog id="dlgS" style="width:min(360px,calc(100% - 32px))">
+  <div class="stack"><h2>Struk</h2><div id="strukBox"></div><p class="hint" id="strukHint" hidden>Halaman di dalam Claude tidak bisa membuka dialog cetak. Cetak struk tersedia di aplikasi Android.</p>
+  <div class="row" style="justify-content:flex-end"><button type="button" class="btn" data-act="tutupDlgS">Tutup</button><button type="button" class="btn primary" id="btnCetak" data-act="cetak">Cetak</button></div></div>
+</dialog>
+<div id="printArea"></div>
 <div id="toast" hidden></div>
 
 <script>
 const CH={offline:'Langsung',gofood:'GoFood',grabfood:'GrabFood',shopeefood:'ShopeeFood'};
-const DEF={toko:'Toko Saya',modalAwal:0,pajak:0,margin:40,bulat:500,kemasan:[],ch:{gofood:{fee:20,markup:0,auto:true},grabfood:{fee:20,markup:0,auto:true},shopeefood:{fee:20,markup:0,auto:true}}};
+const DEF={toko:'Toko Saya',modalAwal:0,pajak:0,margin:40,bulat:500,kertas:58,kaki:'Terima kasih',kemasan:[],ch:{gofood:{fee:20,markup:0,auto:true},grabfood:{fee:20,markup:0,auto:true},shopeefood:{fee:20,markup:0,auto:true}}};
 const S={products:{},menus:{},purchases:{},sales:{},settings:JSON.parse(JSON.stringify(DEF))};
 const LS='kasir-gudang-v1';
-let db=null,mode='memuat',cart={},chan='offline',editId=null,editM=null,mD={comps:[],opts:[]},kD=[],busy=false;
+let db=null,mode='memuat',cart={},chan='offline',editId=null,editM=null,mD={comps:[],opts:[]},kD=[],busy=false,akhir=null;const DI_CLAUDE=!!(window.claude&&window.claude.use);
 
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -386,7 +398,7 @@ function render(){
   $('#bayarWrap').hidden=chan!=='offline';
   const by=num($('#bayar').value);
   $('#kembali').innerHTML=chan==='offline'&&by>0?`<span>Kembalian</span><span class="${by<n.tagih?'neg':''}">${by<n.tagih?'Kurang '+rp(n.tagih-by):rp(by-n.tagih)}</span>`:'';
-  $('#btnSimpan').disabled=!n.items.length||busy;
+  $('#btnSimpan').disabled=!n.items.length||busy;$('#btnStruk').hidden=!akhir;
 
   // gudang
   $('#tGudang').innerHTML=ps.length?ps.map(p=>{const s=statusStok(p);return`<tr><td class="wrapc"><b>${esc(p.name)}</b></td><td><span class="pill ${s}">${LBL[s]}</span></td><td class="r">${nf(p.stock)}</td><td>${esc(p.unit||'')}</td><td class="r">${nf(p.min||0)}</td><td class="r">${rp(p.cost)}</td><td class="r">${rp(Math.max(p.stock,0)*(p.cost||0))}</td><td><button class="btn sm" data-act="ubah" data-id="${p.id}">Ubah</button></td></tr>`}).join('')
@@ -422,7 +434,7 @@ function render(){
   const jr=[];jl.forEach(([,s])=>{s.items.forEach(i=>{const o=i.price*i.qty,f=o*num(s.feePct)/100,m=(i.hpp||0)*i.qty;jr.push({ts:s.ts,c:s.channel,i,o,f,m,l:o-f-m})});if(s.kemas&&s.kemas.hpp)jr.push({ts:s.ts,c:s.channel,i:{name:'Kemasan transaksi',qty:1,hpp:s.kemas.hpp,price:0},o:0,f:0,m:s.kemas.hpp,l:-s.kemas.hpp})});
   $('#tJurnal').innerHTML=jr.length?jr.slice(0,400).map(x=>`<tr><td>${waktu(x.ts)}</td><td>${CH[x.c]||x.c}</td><td class="wrapc">${esc(x.i.name)}</td><td class="r">${nf(x.i.qty)}</td><td class="r">${rp(x.i.hpp)}</td><td class="r">${rp(x.i.price)}</td><td class="r">${rp(x.m)}</td><td class="r">${rp(x.o)}</td><td class="r">${rp(-x.f)}</td><td class="r" style="color:var(${x.l<0?'--bad':'--accent'})">${rp(x.l)}</td></tr>`).join(''):'<tr><td colspan="10"><p class="empty">Belum ada penjualan di periode ini.</p></td></tr>';
   $('#fJurnal').innerHTML=jr.length?`<tr><td colspan="6"><b>Total</b></td><td class="r">${rp(T.hpp)}</td><td class="r">${rp(T.sub)}</td><td class="r">${rp(-T.fee)}</td><td class="r"><b>${rp(T.net-T.hpp)}</b></td></tr>`:'';
-  $('#tJual').innerHTML=jl.length?jl.slice(0,200).map(([id,s])=>`<tr><td>${waktu(s.ts)}</td><td>${CH[s.channel]||s.channel}</td><td class="wrapc">${esc(s.items.map(i=>nf(i.qty)+'× '+i.name).join(', '))}</td><td class="r">${rp(s.sub)}</td><td class="r">${rp(-s.fee)}</td><td class="r">${rp(s.net)}</td><td class="r">${rp(s.net-s.hpp)}</td><td><button class="btn sm danger" data-act="batalJual" data-id="${id}" data-confirm="1">Batalkan</button></td></tr>`).join('')
+  $('#tJual').innerHTML=jl.length?jl.slice(0,200).map(([id,s])=>`<tr><td>${waktu(s.ts)}</td><td>${CH[s.channel]||s.channel}</td><td class="wrapc">${esc(s.items.map(i=>nf(i.qty)+'× '+i.name).join(', '))}</td><td class="r">${rp(s.sub)}</td><td class="r">${rp(-s.fee)}</td><td class="r">${rp(s.net)}</td><td class="r">${rp(s.net-s.hpp)}</td><td><button class="btn sm" data-act="struk" data-id="${id}">Struk</button> <button class="btn sm danger" data-act="batalJual" data-id="${id}" data-confirm="1">Batalkan</button></td></tr>`).join('')
     :'<tr><td colspan="8"><p class="empty">Belum ada penjualan di periode ini.</p></td></tr>';
 }
 const tile=(l,v,s)=>`<div class="tile"><span>${l}</span><b>${v}</b>${s?`<small>${s}</small>`:''}</div>`;
@@ -435,7 +447,7 @@ function prevBeli(){const t=num($('#b-total').value),q=bQty(),p=S.products[$('#b
 function rowsK(){$('#k-rows').innerHTML=kD.map((k,i)=>`<div class="row mrow" data-row="k"><label style="flex:3 1 180px">Kemasan<select data-f="pid">${pilihanBahan(k.pid?'p:'+k.pid:'',false)}</select></label><label style="flex:1 1 80px">Jumlah per pesanan<input data-f="qty" type="number" inputmode="decimal" min="0" step="any" value="${num(k.qty)}"></label><button type="button" class="btn sm" data-act="kDel" data-id="${i}">Hapus</button></div>`).join('')||'<p class="hint">Belum ada. Beli dulu kantongnya di Pembelian, lalu tambahkan di sini.</p>'}
 function sinkK(){kD=[...document.querySelectorAll('#k-rows [data-row]')].map(r=>({pid:r.querySelector('[data-f=pid]').value.slice(2),qty:num(r.querySelector('[data-f=qty]').value)}))}
 function fillSettings(){const st=S.settings;if($('#v-atur').contains(document.activeElement))return;
-  $('#s-toko').value=st.toko||'';$('#s-modal').value=st.modalAwal||0;$('#s-pajak').value=st.pajak||0;$('#s-margin').value=num(st.margin);kD=(st.kemasan||[]).map(k=>({...k}));rowsK();$('#s-bulat').value=B();
+  $('#s-toko').value=st.toko||'';$('#s-modal').value=st.modalAwal||0;$('#s-pajak').value=st.pajak||0;$('#s-margin').value=num(st.margin);$('#s-kertas').value=num(st.kertas)||58;$('#s-kaki').value=st.kaki||'';kD=(st.kemasan||[]).map(k=>({...k}));rowsK();$('#s-bulat').value=B();
   $('#tAtur').innerHTML=['gofood','grabfood','shopeefood'].map(c=>`<tr><td>${CH[c]}</td><td><input id="f-${c}" type="number" min="0" max="100" step="any" inputmode="decimal" value="${num(st.ch[c].fee)}" aria-label="Komisi ${CH[c]}"></td><td><input id="a-${c}" type="checkbox" style="width:auto" ${st.ch[c].auto!==false?'checked':''} aria-label="Naikkan harga otomatis ${CH[c]}"></td><td><input id="m-${c}" type="number" min="0" step="any" inputmode="decimal" value="${num(st.ch[c].markup)}" aria-label="Kenaikan harga ${CH[c]}"></td></tr>`).join('')}
 function tab(t){if(!$('#v-'+t))t='kasir';['kasir','gudang','menu','beli','laporan','atur'].forEach(x=>$('#v-'+x).hidden=x!==t);
   document.querySelectorAll('#nav button').forEach(b=>b.setAttribute('aria-selected',b.dataset.tab===t));try{history.replaceState(null,'','#'+t)}catch(e){}}
@@ -457,14 +469,38 @@ const A={
   kosongkan(){cart={};$('#bayar').value='';render()},
   simpanJual(){const n=hitungNota();if(!n.items.length)return;const ch=chan;
     run(async()=>{const tot={};n.items.forEach(i=>{for(const id in i.use)tot[id]=(tot[id]||0)+i.use[id]*i.qty});for(const id in n.kemas.use)tot[id]=(tot[id]||0)+n.kemas.use[id];
-      await put('sales',newId(),{ts:Date.now(),channel:ch,items:n.items,sub:n.sub,pajak:n.pajak,feePct:n.feePct,fee:n.fee,net:n.net,hpp:n.hpp,kemas:n.kemas});
+      const sale={ts:Date.now(),channel:ch,items:n.items,sub:n.sub,pajak:n.pajak,feePct:n.feePct,fee:n.fee,net:n.net,hpp:n.hpp,kemas:n.kemas,bayar:ch==='offline'?num($('#bayar').value):0};
+      await put('sales',newId(),sale);
       for(const id in tot){const p=S.products[id];if(p)await put('products',id,{...p,stock:r2(p.stock-tot[id])})}
-      cart={};$('#bayar').value='';toast('Transaksi tersimpan · laba '+rp(n.laba))})},
+      cart={};$('#bayar').value='';akhir=sale;toast('Transaksi tersimpan · laba '+rp(n.laba));if(!DI_CLAUDE)bukaStruk(sale)})},
   batalJual(id){const s=S.sales[id];if(!s)return;run(async()=>{const tot={};
       s.items.forEach(i=>{if(i.use)for(const x in i.use)tot[x]=(tot[x]||0)+i.use[x]*i.qty;else tot[i.id]=(tot[i.id]||0)+i.qty});if(s.kemas)for(const x in s.kemas.use)tot[x]=(tot[x]||0)+s.kemas.use[x];
       for(const x in tot){const p=S.products[x];if(p)await put('products',x,{...p,stock:r2(p.stock+tot[x])})}
       await del('sales',id);toast('Penjualan dibatalkan, stok dikembalikan')})},
   kAdd(){sinkK();kD.push({pid:'',qty:1});rowsK()},kDel(i){sinkK();kD.splice(+i,1);rowsK()},
+  strukAkhir(){if(akhir)bukaStruk(akhir)},struk(id){if(S.sales[id])bukaStruk(S.sales[id])},tutupDlgS(){$('#dlgS').close()},
+  cetak(){let st=$('#pgStyle');if(!st){st=document.createElement('style');st.id='pgStyle';document.head.appendChild(st)}
+    st.textContent='@page{size:'+(num(S.settings.kertas)||58)+'mm auto;margin:0}';$('#printArea').innerHTML=$('#strukBox').innerHTML;$('#dlgS').close();document.body.classList.add('cetak');setTimeout(()=>window.print(),80)},
+  unduhExcel(){
+    const st=S.settings,per=$('#periode').value,sejak=per==='semua'?0:per==='hari'?new Date().setHours(0,0,0,0):Date.now()-num(per)*864e5,ps=prodList();
+    const tg=t=>{const d=new Date(t),z=n=>String(n).padStart(2,'0');return d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate())+' '+z(d.getHours())+':'+z(d.getMinutes())};
+    const jl=Object.values(S.sales).filter(x=>x.ts>=sejak).sort((a,b)=>a.ts-b.ts),bl=Object.values(S.purchases).filter(x=>x.ts>=sejak).sort((a,b)=>a.ts-b.ts);
+    const T={n:0,sub:0,fee:0,net:0,hpp:0},pc={};Object.keys(CH).forEach(c=>pc[c]={n:0,sub:0,fee:0,net:0,hpp:0});
+    jl.forEach(x=>[T,pc[x.channel]].forEach(o=>{if(!o)return;o.n++;o.sub+=x.sub;o.fee+=x.fee;o.net+=x.net;o.hpp+=x.hpp}));
+    const belanja=Object.values(S.purchases).reduce((a,b)=>a+b.total,0),netAll=Object.values(S.sales).reduce((a,x)=>a+x.net,0),nilai=ps.reduce((a,p)=>a+Math.max(p.stock,0)*(p.cost||0),0);
+    const jr=[['Waktu','Saluran','Menu','Qty','HPP per satuan','Harga jual','Modal','Omzet','Potongan aplikasi','Profit']];
+    jl.forEach(x=>{x.items.forEach(i=>{const o=i.price*i.qty,f=o*num(x.feePct)/100,m=(i.hpp||0)*i.qty;jr.push([tg(x.ts),CH[x.channel]||x.channel,i.name,i.qty,r2(i.hpp||0),i.price,r2(m),o,r2(f),r2(o-f-m)])});
+      if(x.kemas&&x.kemas.hpp)jr.push([tg(x.ts),CH[x.channel]||x.channel,'Kemasan transaksi',1,r2(x.kemas.hpp),0,r2(x.kemas.hpp),0,0,r2(-x.kemas.hpp)])});
+    const sheets=[
+      ['Ringkasan',[['Toko',st.toko||''],['Periode',$('#periode').selectedOptions[0].textContent],['Dibuat',tg(Date.now())],[],['Jumlah transaksi',T.n],['Omzet',T.sub],['Potongan aplikasi',r2(T.fee)],['Diterima bersih',r2(T.net)],['HPP terjual',r2(T.hpp)],['Laba kotor',r2(T.net-T.hpp)],['Belanja stok di periode ini',bl.reduce((a,b)=>a+b.total,0)],[],['Sepanjang waktu'],['Modal awal',num(st.modalAwal)],['Total belanja stok',belanja],['Nilai stok di gudang',r2(nilai)],['Perkiraan kas',r2(num(st.modalAwal)-belanja+netAll)]]],
+      ['Jurnal Profit',jr],
+      ['Penjualan',[['Waktu','Saluran','Isi','Omzet','Pajak','Potongan aplikasi','Diterima bersih','HPP','Laba kotor','Uang diterima']].concat(jl.map(x=>[tg(x.ts),CH[x.channel]||x.channel,x.items.map(i=>i.qty+'x '+i.name).join(', '),x.sub,r2(x.pajak||0),r2(x.fee),r2(x.net),r2(x.hpp),r2(x.net-x.hpp),x.bayar||0]))],
+      ['Per Saluran',[['Saluran','Transaksi','Omzet','Potongan aplikasi','Diterima bersih','HPP','Laba kotor']].concat(Object.keys(CH).map(c=>[CH[c],pc[c].n,pc[c].sub,r2(pc[c].fee),r2(pc[c].net),r2(pc[c].hpp),r2(pc[c].net-pc[c].hpp)]))],
+      ['Pembelian',[['Waktu','Barang','Pack','Isi per pack','Stok masuk','Total dibayar','HPP per satuan','Catatan']].concat(bl.map(b=>[tg(b.ts),b.name,b.pack||b.qty,b.isi||1,b.qty,b.total,r2(b.total/b.qty),b.note||'']))],
+      ['Stok Gudang',[['Barang','Satuan','Stok','Batas tipis','Status','HPP per satuan','Nilai stok']].concat(ps.map(p=>[p.name,p.unit||'',p.stock,p.min||0,LBL[statusStok(p)],r2(p.cost||0),r2(Math.max(p.stock,0)*(p.cost||0))]))],
+      ['Menu',[['Menu','Jenis','HPP','Harga jual','GoFood','GrabFood','ShopeeFood','Margin %']].concat(menuList().map(m=>{const h=menuHpp(m,0),hj=menuHarga(m,0);return[m.name,m.kind==='paket'?'Paket':'Alacarte',r2(h),hj,hargaApp(hj,'gofood'),hargaApp(hj,'grabfood'),hargaApp(hj,'shopeefood'),hj>0?r2((hj-h)/hj*100):0]}))]];
+    const d=new Date(),z=n=>String(n).padStart(2,'0');
+    simpanFile('laporan-kasir-'+d.getFullYear()+z(d.getMonth()+1)+z(d.getDate())+'.xlsx',mkXlsx(sheets))},
   ekspor(){const d=new Date(),a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify({app:'kasir-gudang',v:1,ts:Date.now(),products:S.products,menus:S.menus,purchases:S.purchases,sales:S.sales,settings:S.settings})],{type:'application/json'}));
     a.download='kasir-gudang-'+d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0')+'.json';document.body.appendChild(a);a.click();a.remove();toast('File cadangan diunduh')},
   keluar(){firebase.auth().signOut()},
@@ -488,7 +524,7 @@ const A={
       await del('purchases',id);toast('Pembelian dibatalkan')})},
   barangBaru(){bukaDlg(null)},ubah(id){bukaDlg(id)},tutupDlg(){$('#dlg').close()},
   hapusBarang(){const id=editId;if(!id)return;$('#dlg').close();delete cart['p:'+id];run(async()=>{await del('products',id);toast('Barang dihapus')})},
-  simpanAtur(){const st={toko:$('#s-toko').value.trim()||'Toko Saya',modalAwal:num($('#s-modal').value),pajak:num($('#s-pajak').value),margin:num($('#s-margin').value),bulat:num($('#s-bulat').value)||500,ch:{}};sinkK();st.kemasan=kD.filter(k=>k.pid&&k.qty>0);
+  simpanAtur(){const st={toko:$('#s-toko').value.trim()||'Toko Saya',modalAwal:num($('#s-modal').value),pajak:num($('#s-pajak').value),margin:num($('#s-margin').value),kertas:num($('#s-kertas').value)||58,kaki:$('#s-kaki').value.trim(),bulat:num($('#s-bulat').value)||500,ch:{}};sinkK();st.kemasan=kD.filter(k=>k.pid&&k.qty>0);
     ['gofood','grabfood','shopeefood'].forEach(c=>st.ch[c]={fee:num($('#f-'+c).value),markup:num($('#m-'+c).value),auto:$('#a-'+c).checked});
     run(async()=>{S.settings=st;if(db)await db.doc('settings/main').set(st);else saveLocal();toast('Pengaturan tersimpan')})},
   hapusContoh(){run(async()=>{for(const col of ['sales','purchases','products'])for(const id of Object.keys(S[col]))if(S[col][id].contoh)await del(col,id);cart={};toast('Data contoh dihapus')})}
@@ -530,6 +566,42 @@ $('#dlgMForm').addEventListener('submit',e=>{e.preventDefault();sinkM();const na
   if(!m.comps.length){toast('Tambahkan minimal satu isi menu');return}
   if(!m.auto&&!(m.price>0)){toast('Isi harga jual manual atau centang harga otomatis');return}
   const id=editM||newId();$('#dlgM').close();cart={};run(async()=>{await put('menus',id,{...m,name,kind:$('#m-kind').value});toast('Menu tersimpan')})});
+// Penulis .xlsx minimal (zip tanpa kompresi), tanpa pustaka luar. sheets=[[nama,barisArray],...]
+function mkXlsx(sheets){
+  const NS='http://schemas.openxmlformats.org/spreadsheetml/2006/main',HD='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+  const xe=v=>String(v).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])).replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g,'');
+  const col=i=>{let t='';for(i++;i>0;i=Math.floor((i-1)/26))t=String.fromCharCode(65+(i-1)%26)+t;return t};
+  const ws=a=>{const w=[];a.forEach(r=>r.forEach((v,i)=>{w[i]=Math.min(40,Math.max(w[i]||10,String(v==null?'':v).length+2))}));
+    return HD+'<worksheet xmlns="'+NS+'">'+(w.length?'<cols>'+w.map((x,i)=>`<col min="${i+1}" max="${i+1}" width="${x}" customWidth="1"/>`).join('')+'</cols>':'')+'<sheetData>'+a.map((r,ri)=>`<row r="${ri+1}">`+r.map((v,ci)=>{if(v==null||v==='')return'';const ref=col(ci)+(ri+1),st=ri===0&&r.length>2?' s="1"':'';
+      return typeof v==='number'&&isFinite(v)?`<c r="${ref}"${st}><v>${v}</v></c>`:`<c r="${ref}"${st} t="inlineStr"><is><t xml:space="preserve">${xe(v)}</t></is></c>`}).join('')+'</row>').join('')+'</sheetData></worksheet>'};
+  const enc=new TextEncoder(),files=[],add=(n,t)=>files.push([enc.encode(n),enc.encode(t)]);
+  add('[Content_Types].xml',HD+'<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'+sheets.map((_,i)=>`<Override PartName="/xl/worksheets/sheet${i+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')+'</Types>');
+  add('_rels/.rels',HD+'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>');
+  add('xl/workbook.xml',HD+'<workbook xmlns="'+NS+'" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>'+sheets.map(([n],i)=>`<sheet name="${xe(n)}" sheetId="${i+1}" r:id="rId${i+1}"/>`).join('')+'</sheets></workbook>');
+  add('xl/_rels/workbook.xml.rels',HD+'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'+sheets.map((_,i)=>`<Relationship Id="rId${i+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i+1}.xml"/>`).join('')+`<Relationship Id="rId${sheets.length+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`);
+  add('xl/styles.xml',HD+'<styleSheet xmlns="'+NS+'"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/></cellXfs></styleSheet>');
+  sheets.forEach(([,a],i)=>add('xl/worksheets/sheet'+(i+1)+'.xml',ws(a)));
+  const T=[];for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;T[n]=c>>>0}
+  const crc=b=>{let c=-1;for(let i=0;i<b.length;i++)c=T[(c^b[i])&255]^(c>>>8);return(c^-1)>>>0};
+  const u16=n=>[n&255,n>>>8&255],u32=n=>[n&255,n>>>8&255,n>>>16&255,n>>>24&255],parts=[],cd=[];let off=0;
+  files.forEach(([n,d])=>{const c=crc(d),m=[...u16(20),...u16(0x800),...u16(0),...u16(0),...u16(0x21),...u32(c),...u32(d.length),...u32(d.length),...u16(n.length),...u16(0)],h=new Uint8Array([0x50,0x4b,3,4,...m]);
+    parts.push(h,n,d);cd.push(new Uint8Array([0x50,0x4b,1,2,...u16(20),...m,...u16(0),...u16(0),...u16(0),...u32(0),...u32(off)]),n);off+=h.length+n.length+d.length});
+  const cl=cd.reduce((a,x)=>a+x.length,0);
+  parts.push(...cd,new Uint8Array([0x50,0x4b,5,6,0,0,0,0,...u16(files.length),...u16(files.length),...u32(cl),...u32(off),0,0]));
+  return new Blob(parts,{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'})}
+async function simpanFile(nama,blob){
+  if(DI_CLAUDE){const d=await window.claude.use('downloads');if(!d){toast('Unduhan tidak tersedia di tampilan ini.');return}
+    try{await d.save({filename:nama,data:blob});toast('File disimpan')}catch(e){if(!e||e.code!=='declined')toast('Gagal mengunduh file.')}return}
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=nama;document.body.appendChild(a);a.click();a.remove();toast('File diunduh')}
+function bukaStruk(s){const st=S.settings,a=n=>Math.round(n||0).toLocaleString('id-ID'),tagih=s.sub+(s.pajak||0);
+  let h=`<div class="struk"><div class="c b">${esc(st.toko||'Toko')}</div><div class="c">${new Date(s.ts).toLocaleString('id-ID',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}</div><div class="c">${s.channel==='offline'?'':esc(CH[s.channel]||'')}</div><hr>`;
+  h+=s.items.map(i=>`<div>${esc(i.name)}</div><div class="sr"><span>${nf(i.qty)} x ${a(i.price)}</span><span>${a(i.price*i.qty)}</span></div>`).join('');
+  h+=`<hr><div class="sr"><span>Subtotal</span><span>${a(s.sub)}</span></div>`;
+  if(s.pajak)h+=`<div class="sr"><span>Pajak</span><span>${a(s.pajak)}</span></div>`;
+  h+=`<div class="sr t"><span>TOTAL</span><span>Rp ${a(tagih)}</span></div>`;
+  if(s.bayar>0)h+=`<div class="sr"><span>Bayar</span><span>${a(s.bayar)}</span></div><div class="sr"><span>Kembali</span><span>${a(Math.max(s.bayar-tagih,0))}</span></div>`;
+  h+=`<hr><div class="c">${esc(st.kaki||'')}</div></div>`;
+  $('#strukBox').innerHTML=h;$('#btnCetak').hidden=DI_CLAUDE;$('#strukHint').hidden=!DI_CLAUDE;$('#dlgS').showModal()}
 function bukaDlg(id){editId=id;const p=id?S.products[id]:null;
   $('#dlgTitle').textContent=p?'Ubah barang':'Beli barang baru';$('#dlgDel').hidden=!p;$('#dlgDel').textContent='Hapus';delete $('#dlgDel').dataset.armed;
   $('#p-jual').checked=p?p.jual!==false:true;$('#p-name').value=p?p.name:'';$('#p-unit').value=p?p.unit||'':'pcs';$('#p-price').value=p?p.price:'';$('#p-margin').value=p?(p.margin!=null?p.margin:p.price>0?Math.round((1-(p.cost||0)/p.price)*1000)/10:num(S.settings.margin)):num(S.settings.margin);$('#p-min').value=p?p.min||0:5;$('#p-stock').value=p?p.stock:'';$('#l-stock').textContent=p?'Stok sekarang (koreksi)':'Stok masuk (satuan pakai)';$('#rowPack').hidden=!!p;$('#p-pack').value='';$('#p-hpack').value='';$('#p-isi').value='';$('#dlgHint').textContent=p?'Untuk barang masuk berikutnya, catat di Pembelian supaya modal ikut terhitung. Ubah stok di sini hanya untuk koreksi (opname).':'Isi pembelian per pack; stok masuk dan HPP per satuan terhitung sendiri. Stok langsung masuk gudang dan tercatat sebagai pembelian pertama.';$('#p-cost').value=p?Math.round((p.cost||0)*100)/100:'';
