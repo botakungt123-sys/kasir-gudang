@@ -261,6 +261,10 @@ dialog form{display:flex;flex-direction:column;gap:12px}
       <h2>Integrasi aplikasi ojol</h2>
       <p class="hint">Status: belum tersambung. Pesanan GoFood, GrabFood, dan ShopeeFood akan masuk otomatis ke kotak Pesanan masuk di Kasir setelah akses API dari masing-masing aplikasi didapat. Sementara itu, coba alurnya dengan pesanan simulasi; pesanan simulasi tidak mengubah apa pun sampai Anda menyimpannya sebagai transaksi.</p>
       <div class="row"><button type="button" class="btn" data-act="simulasi">Kirim pesanan simulasi</button></div>
+      <span class="sec">Kunci API per toko</span>
+      <p class="hint">Isi dengan kunci dari masing-masing aplikasi untuk toko yang sedang login. Setiap akun toko menyimpan kuncinya sendiri. Kunci rahasia hanya dikirim ke server dan tidak bisa dibaca kembali dari aplikasi; yang ditampilkan hanya 4 karakter terakhir. Pesanan baru masuk otomatis setelah server integrasi aktif.</p>
+      <p class="hint" id="kunciCatatan" hidden>Halaman di dalam Claude tidak menyimpan kunci rahasia. Isi kunci API di aplikasi Android.</p>
+      <div class="stack" id="kunciBox" style="gap:12px"></div>
     </div>
     <div class="panel" id="panelCetak">
       <h2>Printer struk</h2>
@@ -346,7 +350,7 @@ dialog form{display:flex;flex-direction:column;gap:12px}
 <script>
 const CH={offline:'Langsung',gofood:'GoFood',grabfood:'GrabFood',shopeefood:'ShopeeFood'};
 const DEF={toko:'Toko Saya',modalAwal:0,modalAuto:true,pajak:0,margin:40,bulat:500,kertas:58,kaki:'Terima kasih',kemasan:[],kemasKat:{makanan:[],minuman:[]},ch:{gofood:{fee:20,markup:0,auto:true},grabfood:{fee:20,markup:0,auto:true},shopeefood:{fee:20,markup:0,auto:true}}};
-const S={products:{},menus:{},pesanan:{},purchases:{},sales:{},settings:JSON.parse(JSON.stringify(DEF))};
+const S={products:{},menus:{},pesanan:{},integrasi:{},purchases:{},sales:{},settings:JSON.parse(JSON.stringify(DEF))};
 const LS='kasir-gudang-v1';
 let db=null,mode='memuat',cart={},chan='offline',editId=null,editM=null,mD={comps:[],opts:[]},kD={order:[],makanan:[],minuman:[]},busy=false,akhir=null,kemasDelta={},prosesId=null,mapTunda=null,strukNow=null,btDev=null,btCh=null;const DI_CLAUDE=!!(window.claude&&window.claude.use);
 
@@ -405,6 +409,14 @@ const norm=t=>String(t||'').trim().toLowerCase().replace(/\s+/g,' ');
 function cariMenu(ch,nama){const n=norm(nama);if(!n)return null;const ms=menuList();
   return(ms.find(m=>String((m.ext||{})[ch]||'').split(';').some(x=>norm(x)===n))||ms.find(m=>norm(m.name)===n)||{}).id||null}
 const tungguPesanan=()=>Object.entries(S.pesanan).filter(([,p])=>p.status==='baru').sort((a,b)=>a[1].ts-b[1].ts);
+// Kunci API per toko. simpanRahasia diisi oleh versi Android (tulis-saja ke server); null = tidak tersedia.
+let simpanRahasia=null;
+const PLAT={gofood:{n:'GoFood',f:[['idKlien','Client ID (App ID)'],['idToko','Outlet ID']],r:'Client Secret'},grabfood:{n:'GrabFood',f:[['idKlien','Client ID'],['idToko','Merchant ID']],r:'Client Secret'},shopeefood:{n:'ShopeeFood',f:[['idKlien','Partner ID'],['idToko','Store ID']],r:'Kunci rahasia'}};
+function rowsKunci(){const ae=document.activeElement;if(ae&&ae.tagName==='INPUT'&&$('#kunciBox').contains(ae))return;
+  $('#kunciCatatan').hidden=!!simpanRahasia;
+  $('#kunciBox').innerHTML=Object.entries(PLAT).map(([k,p])=>{const g=S.integrasi[k]||{};
+    return`<div class="stack" style="gap:6px"><b style="font-size:13px">${p.n}</b><div class="row">${p.f.map(([fk,fl])=>`<label>${fl}<input id="ki-${k}-${fk}" type="text" autocomplete="off" value="${esc(g[fk]||'')}"></label>`).join('')}${simpanRahasia?`<label>${p.r}<input id="ki-${k}-rahasia" type="password" autocomplete="new-password" placeholder="${g.rahasiaAkhir?'Tersimpan ••••'+esc(g.rahasiaAkhir)+' (isi untuk mengganti)':''}"></label>`:''}</div>
+    <div class="row" style="justify-content:space-between"><span class="hint">${g.ts?'Disimpan '+waktu(g.ts)+(g.rahasiaAkhir?' · rahasia ••••'+esc(g.rahasiaAkhir):' · rahasia belum diisi')+' · '+(g.aktif?'tersambung':'server integrasi belum aktif'):'Belum diisi'}</span><button type="button" class="btn sm" data-act="simpanKunci" data-id="${k}">Simpan kunci ${p.n}</button></div></div>`}).join('')}
 function hitungNota(){
   const items=[];let sub=0,hpp=0;
   for(const k in cart){const e=cart[k];let name,h,c,use;
@@ -468,6 +480,7 @@ function render(){
 
   if(!$('#v-atur').contains(document.activeElement)){sinkK();rowsK()}
   if($('#s-modalauto').checked)$('#s-modal').value=Math.round(totalBeli());
+  rowsKunci();
   // menu
   $('#tMenu').innerHTML=ms.length?ms.map(m=>{const h=menuHpp(m,0)+kemasHpp(m),hj=menuHarga(m,0);
     const isi=(m.comps||[]).map(c=>nf(num(c.qty))+' '+(c.t==='m'?(S.menus[c.id]||{}).name||'(menu dihapus)':((S.products[c.id]||{}).unit||'')+' '+((S.products[c.id]||{}).name||'(bahan dihapus)'))).join(', ')+((m.opts||[]).length?' + pilihan '+(m.optName||'')+': '+m.opts.map((_,o)=>optNama(m,o)+(optAdd(m,o)?' (+'+rp(optAdd(m,o))+')':' (gratis)')).join(' / '):'');
@@ -586,6 +599,10 @@ const A={
     const pilih=ms.sort(()=>Math.random()-.5).slice(0,Math.min(2,ms.length)),items=pilih.map(m=>({nama:(m.ext||{})[ch]||m.name,qty:1+Math.floor(Math.random()*2),harga:menuCh(m,0,ch)}));
     if(Math.random()<.4)items.push({nama:'Menu baru dari aplikasi',qty:1,harga:10000});
     run(async()=>{await put('pesanan',newId(),{ts:Date.now(),channel:ch,pemesan:nm+' (uji)',items,total:items.reduce((a,i)=>a+i.harga*i.qty,0),status:'baru',uji:true});tab('kasir');toast('Pesanan simulasi masuk di Kasir')})},
+  simpanKunci(k){const p=PLAT[k],g=S.integrasi[k]||{},d={...g,ts:Date.now(),aktif:!!g.aktif};p.f.forEach(([fk])=>d[fk]=$('#ki-'+k+'-'+fk).value.trim());
+    const rEl=$('#ki-'+k+'-rahasia'),r=rEl?rEl.value.trim():'';
+    run(async()=>{if(r){if(!simpanRahasia){toast('Kunci rahasia hanya bisa disimpan di aplikasi Android');return}await simpanRahasia(k,r);d.rahasiaAkhir=r.slice(-4)}
+      await put('integrasi',k,d);if(rEl)rEl.value='';toast('Kunci '+p.n+' tersimpan untuk toko ini')})},
   ekspor(){const d=new Date(),a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify({app:'kasir-gudang',v:1,ts:Date.now(),products:S.products,menus:S.menus,purchases:S.purchases,sales:S.sales,settings:S.settings})],{type:'application/json'}));
     a.download='kasir-gudang-'+d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0')+'.json';document.body.appendChild(a);a.click();a.remove();toast('File cadangan diunduh')},
   keluar(){firebase.auth().signOut()},
@@ -770,11 +787,12 @@ function boot(){
   $('#loginForm').addEventListener('submit',e=>{e.preventDefault();masuk(false)});$('#l-daftar').addEventListener('click',()=>masuk(true));
   let unsub=[];
   auth.onAuthStateChanged(u=>{unsub.forEach(f=>f());unsub=[];cart={};
-    if(!u){db=null;mode='memuat';S.products={};S.menus={};S.purchases={};S.sales={};S.settings=mergeSet({});$('#app').hidden=true;$('#login').hidden=false;return}
+    if(!u){db=null;simpanRahasia=null;mode='memuat';S.integrasi={};S.pesanan={};S.products={};S.menus={};S.purchases={};S.sales={};S.settings=mergeSet({});$('#app').hidden=true;$('#login').hidden=false;return}
     $('#login').hidden=true;$('#app').hidden=false;$('#akun').textContent=u.email;$('#l-pass').value='';
     const base='toko/'+u.uid+'/';
     // tulis tidak ditunggu: saat offline Firestore menahan promise sampai server menjawab
     db={doc:p=>{const r=fs.doc(base+p);return{set:d=>{r.set(d).catch(gagal);return Promise.resolve()},delete:()=>{r.delete().catch(gagal);return Promise.resolve()},onSnapshot:(a,b)=>r.onSnapshot(a,b)}},collection:c=>fs.collection(base+c)};
+    simpanRahasia=(k,val)=>{fs.doc('kunci/'+u.uid+'/platform/'+k).set({rahasia:val,ts:Date.now()}).catch(gagal);return Promise.resolve()};
     mode='cloud';const onErr=e=>{$('#sync').textContent=e&&e.code==='permission-denied'?'Akses data ditolak: aturan Firestore belum dipasang.':'Sambungan data terputus. Muat ulang halaman.'};
     for(const col of ['products','menus','purchases','sales','pesanan']){
       const q=(col==='products'||col==='menus')?db.collection(col).limit(1000):db.collection(col).orderBy('ts','desc').limit(1000);
