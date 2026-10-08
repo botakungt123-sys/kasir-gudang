@@ -190,6 +190,7 @@ dialog form{display:flex;flex-direction:column;gap:12px}
       <h2>Catat pembelian barang</h2>
       <p class="hint">Semua bahan dan wadah (cup, box, sedotan, kantong) masuk lewat sini. Barang yang sudah ada: pilih di daftar. Barang yang belum pernah dibeli: tekan Beli barang baru.</p>
       <div class="row">
+        <label style="flex:2 1 200px">Cari barang<input id="b-cari" type="search" placeholder="Ketik nama barang" autocomplete="off"></label>
         <label style="flex:2 1 200px">Barang<select id="b-prod"></select></label>
         <label>Jumlah beli (pack/dus)<input id="b-pack" type="number" inputmode="decimal" min="0" step="any" placeholder="1"></label>
         <label>Isi per pack<input id="b-isi" type="number" inputmode="decimal" min="0" step="any" value="1"></label>
@@ -423,8 +424,9 @@ function render(){
 
   // pembelian
   const sel=$('#b-prod'),cur=sel.value;
-  sel.innerHTML=ps.length?ps.map(p=>`<option value="${p.id}">${esc(p.name)} (stok ${nf(p.stock)} ${esc(p.unit||'')})</option>`).join(''):'<option value="">Belum ada barang</option>';
-  if(cur&&S.products[cur])sel.value=cur;
+  const bq=$('#b-cari').value.trim().toLowerCase(),bps=ps.filter(p=>!bq||p.name.toLowerCase().includes(bq));
+  sel.innerHTML=!ps.length?'<option value="">Belum ada barang</option>':!bps.length?'<option value="">Tidak ada barang dengan nama itu</option>':bps.map(p=>`<option value="${p.id}">${esc(p.name)} (stok ${nf(p.stock)} ${esc(p.unit||'')})</option>`).join('');
+  if(cur&&bps.some(p=>p.id===cur))sel.value=cur;
   prevBeli();
   const bl=Object.entries(S.purchases).sort((a,b)=>b[1].ts-a[1].ts);
   $('#tBeli').innerHTML=bl.length?bl.slice(0,200).map(([id,b])=>`<tr><td>${waktu(b.ts)}</td><td class="wrapc">${esc(b.name)}</td><td class="r">${nf(b.pack||b.qty)}</td><td class="r">${nf(b.isi||1)}</td><td class="r">${nf(b.qty)}</td><td>${esc((S.products[b.pid]||{}).unit||'')}</td><td class="r">${rp(b.total/b.qty)}</td><td class="r">${rp(b.total)}</td><td class="wrapc">${esc(b.note||'')}</td><td><button class="btn sm danger" data-act="batalBeli" data-id="${id}" data-confirm="1">Batalkan</button></td></tr>`).join('')
@@ -669,6 +671,8 @@ function sinkBeli(e){const q=num($('#b-pack').value),id=e.target.id;
   if(id==='b-total'){if(q>0&&$('#b-total').value!=='')$('#b-unit').value=r2(num($('#b-total').value)/q)}
   else if(id!=='b-prod'&&id!=='b-isi'&&q>0&&$('#b-unit').value!=='')$('#b-total').value=Math.round(num($('#b-unit').value)*q);
   prevBeli()}
+$('#b-cari').addEventListener('input',()=>{const cur=$('#b-prod').value;render();if($('#b-prod').value!==cur)sinkBeli({target:{id:'b-prod'}})});
+$('#b-cari').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('#b-pack').focus()}});
 ['b-total','b-pack','b-isi','b-unit','b-prod'].forEach(i=>$('#'+i).addEventListener('input',sinkBeli));
 
 /* ---------- mulai ---------- */
