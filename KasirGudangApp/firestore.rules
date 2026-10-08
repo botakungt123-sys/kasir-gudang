@@ -5,5 +5,11 @@ service cloud.firestore {
     match /toko/{uid}/{document=**} {
       allow read, write: if request.auth != null && request.auth.uid == uid;
     }
+    // Kunci rahasia API per toko: hanya bisa ditulis atau dihapus pemiliknya, TIDAK bisa dibaca dari aplikasi.
+    // Server integrasi (Admin SDK) tetap bisa membacanya karena Admin SDK melewati aturan ini.
+    match /kunci/{uid}/platform/{plat} {
+      allow create, update, delete: if request.auth != null && request.auth.uid == uid;
+      allow read: if false;
+    }
   }
 }
