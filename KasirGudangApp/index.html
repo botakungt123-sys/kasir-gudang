@@ -180,7 +180,7 @@ dialog form{display:flex;flex-direction:column;gap:12px}
     <div class="panel">
       <div class="top"><h2>Menu alacarte dan paket</h2><button class="btn primary" data-act="menuBaru">Buat menu</button></div>
       <div class="tw"><table><thead><tr><th>Menu</th><th>Jenis</th><th>Isi</th><th class="r">HPP</th><th class="r">Harga jual</th><th class="r">GoFood</th><th class="r">GrabFood</th><th class="r">ShopeeFood</th><th class="r">Margin</th><th class="r">Bisa dibuat</th><th></th></tr></thead><tbody id="tMenu"></tbody></table></div>
-      <p class="hint">HPP menu dijumlah dari HPP bahan di gudang, jadi ikut berubah saat harga beli bahan berubah. Saat menu terjual, stok tiap bahannya berkurang. Menu dengan pilihan menampilkan HPP dan harga pilihan pertama.</p>
+      <p class="hint">HPP menu dijumlah dari HPP bahan di gudang, jadi ikut berubah saat harga beli bahan berubah. Saat menu terjual, stok tiap bahannya berkurang. Menu dengan pilihan menampilkan HPP dan harga pilihan pertama. Harga dasar otomatis sudah menutup pilihan gratis yang paling mahal; pilihan berbayar menambah harga.</p>
     </div>
   </section>
 
@@ -293,7 +293,7 @@ dialog form{display:flex;flex-direction:column;gap:12px}
     <div class="stack" id="m-comps" style="gap:8px"></div>
     <div class="row"><button type="button" class="btn sm" data-act="mAddComp">Tambah isi</button></div>
     <span class="sec">Pilihan pelanggan (opsional)</span>
-    <p class="hint">Contoh: Es batu custom atau Es batu ori. Pelanggan memilih satu saat dipesan, dan bahannya ikut dihitung ke HPP.</p>
+    <p class="hint">Contoh: Es batu ori (gratis) atau Es batu custom (tambah Rp 2.000). Pelanggan memilih satu saat dipesan. Tambahan harga 0 berarti gratis; bahannya tetap dihitung ke HPP. Bahan boleh dikosongkan, misalnya untuk pilihan Tanpa es.</p>
     <div class="stack" id="m-opts" style="gap:8px"></div>
     <div class="row"><button type="button" class="btn sm" data-act="mAddOpt">Tambah pilihan</button></div>
     <span class="sec">Harga</span>
@@ -348,7 +348,12 @@ function pakai(m,o,qty,out,d){d=d||0;if(!m||d>4)return out;
   const op=(m.opts||[])[o||0];if(op&&op.pid)out[op.pid]=(out[op.pid]||0)+num(op.qty)*qty;return out}
 const hppPakai=u=>Object.keys(u).reduce((a,id)=>a+(S.products[id]?(S.products[id].cost||0)*u[id]:0),0);
 const menuHpp=(m,o)=>hppPakai(pakai(m,o,1,{}));
-const menuHarga=(m,o)=>(m.auto!==false?hargaAuto(menuHpp(m,o),num(m.margin)):0)||Math.ceil((m.price||0)/B())*B();
+// Harga = harga dasar + tambahan pilihan. Harga dasar otomatis menutup HPP isi menu + pilihan gratis yang paling mahal.
+const optHpp=op=>op&&op.pid&&S.products[op.pid]?(S.products[op.pid].cost||0)*num(op.qty):0;
+const optAdd=(m,o)=>{const op=(m.opts||[])[o||0],a=op?num(op.add):0;return a>0?Math.ceil(a/B())*B():0};
+const menuBase=m=>{const gratis=(m.opts||[]).filter(op=>!(num(op.add)>0)),h=hppPakai(pakai({comps:m.comps},0,1,{}))+(gratis.length?Math.max(...gratis.map(optHpp)):0);
+  return(m.auto!==false?hargaAuto(h,num(m.margin)):0)||Math.ceil((m.price||0)/B())*B()};
+const menuHarga=(m,o)=>menuBase(m)+optAdd(m,o);
 const menuCh=(m,o,c)=>c==='offline'?menuHarga(m,o):hargaApp(menuHarga(m,o),c);
 const optNama=(m,o)=>{const op=(m.opts||[])[o];return op?(op.label||(S.products[op.pid]||{}).name||''):''};
 function butuhCart(){const u={};for(const k in cart){const e=cart[k];if(e.t==='m')pakai(S.menus[e.id],e.o,e.qty,u);else u[e.id]=(u[e.id]||0)+e.qty}return u}
@@ -381,7 +386,7 @@ function render(){
   $('#lowBadge').hidden=!low.length;$('#lowBadge').textContent=low.length;
   $('#lowStrip').hidden=!low.length;
   $('#lowText').textContent=low.length?low.length+' barang perlu dibeli lagi: '+low.slice(0,6).map(p=>p.name+' ('+(p.stock<=0?'habis':'sisa '+nf(p.stock))+')').join(', ')+(low.length>6?', …':''):'';
-  const adaContoh=[S.products,S.purchases,S.sales].some(o=>Object.values(o).some(x=>x.contoh));
+  const adaContoh=[S.products,S.menus,S.purchases,S.sales].some(o=>Object.values(o).some(x=>x.contoh));
   $('#demoStrip').hidden=!adaContoh;
 
   // kasir
@@ -412,7 +417,7 @@ function render(){
   if(!$('#v-atur').contains(document.activeElement)){sinkK();rowsK()}
   // menu
   $('#tMenu').innerHTML=ms.length?ms.map(m=>{const h=menuHpp(m,0),hj=menuHarga(m,0);
-    const isi=(m.comps||[]).map(c=>nf(num(c.qty))+' '+(c.t==='m'?(S.menus[c.id]||{}).name||'(menu dihapus)':((S.products[c.id]||{}).unit||'')+' '+((S.products[c.id]||{}).name||'(bahan dihapus)'))).join(', ')+((m.opts||[]).length?' + pilihan '+(m.optName||'')+': '+m.opts.map((_,o)=>optNama(m,o)).join(' / '):'');
+    const isi=(m.comps||[]).map(c=>nf(num(c.qty))+' '+(c.t==='m'?(S.menus[c.id]||{}).name||'(menu dihapus)':((S.products[c.id]||{}).unit||'')+' '+((S.products[c.id]||{}).name||'(bahan dihapus)'))).join(', ')+((m.opts||[]).length?' + pilihan '+(m.optName||'')+': '+m.opts.map((_,o)=>optNama(m,o)+(optAdd(m,o)?' (+'+rp(optAdd(m,o))+')':' (gratis)')).join(' / '):'');
     return`<tr><td class="wrapc"><b>${esc(m.name)}</b></td><td>${m.kind==='paket'?'Paket':'Alacarte'}</td><td class="wrapc">${esc(isi)}</td><td class="r">${rp(h)}</td><td class="r">${rp(hj)}</td><td class="r">${rp(hargaApp(hj,'gofood'))}</td><td class="r">${rp(hargaApp(hj,'grabfood'))}</td><td class="r">${rp(hargaApp(hj,'shopeefood'))}</td><td class="r">${pct(hj-h,hj)}</td><td class="r">${nf(bisa(m,0))}</td><td><button class="btn sm" data-act="ubahMenu" data-id="${m.id}">Ubah</button></td></tr>`}).join('')
     :'<tr><td colspan="11"><p class="empty">Belum ada menu. Beli bahannya dulu di Pembelian (ayam, nasi, sambal), lalu tekan Buat menu.</p></td></tr>';
 
@@ -462,7 +467,7 @@ const A={
   tambah(k){let[t,id,o]=k.split(':');
     if(t==='m'){const m=S.menus[id];if(!m)return;const no=(m.opts||[]).length;
       if(o==null&&no>1){$('#oTitle').textContent=m.name+': '+(m.optName||'pilih');const u=butuhCart();
-        $('#oList').innerHTML=m.opts.map((_,x)=>`<button type="button" class="item" data-act="tambah" data-id="m:${id}:${x}" ${bisa(m,x,u)<1?'disabled':''}><b>${esc(optNama(m,x))}</b><span class="p">${rp(menuCh(m,x,chan))}</span><span class="s">${bisa(m,x,u)<1?'Bahan habis':'HPP '+rp(menuHpp(m,x))}</span></button>`).join('');$('#dlgO').showModal();return}
+        $('#oList').innerHTML=m.opts.map((_,x)=>`<button type="button" class="item" data-act="tambah" data-id="m:${id}:${x}" ${bisa(m,x,u)<1?'disabled':''}><span class="tag">${optAdd(m,x)?'+ '+rp(menuCh(m,x,chan)-menuCh(m,m.opts.findIndex(q=>!(num(q.add)>0))<0?x:m.opts.findIndex(q=>!(num(q.add)>0)),chan)||optAdd(m,x)):'Gratis'}</span><b>${esc(optNama(m,x))}</b><span class="p">${rp(menuCh(m,x,chan))}</span><span class="s">${bisa(m,x,u)<1?'Bahan habis':'HPP '+rp(menuHpp(m,x))}</span></button>`).join('');$('#dlgO').showModal();return}
       o=+(o||0);if($('#dlgO').open)$('#dlgO').close();
       if(bisa(m,o,butuhCart())<1){toast('Bahan '+m.name+' tidak cukup');return}
       k='m:'+id+':'+o;cart[k]=cart[k]||{t:'m',id,o,qty:0};cart[k].qty++}
@@ -514,7 +519,7 @@ const A={
   menuBaru(){bukaMenu(null)},ubahMenu(id){bukaMenu(id)},
   mAddComp(){sinkM();mD.comps.push({t:'p',id:'',qty:1});rowsM()},
   mDelComp(i){sinkM();mD.comps.splice(+i,1);rowsM()},
-  mAddOpt(){sinkM();mD.opts.push({label:'',pid:'',qty:1});rowsM()},
+  mAddOpt(){sinkM();mD.opts.push({label:'',pid:'',qty:1,add:0});rowsM()},
   mDelOpt(i){sinkM();mD.opts.splice(+i,1);rowsM()},
   hapusMenu(){const id=editM;if(!id)return;$('#dlgM').close();cart={};run(async()=>{await del('menus',id);toast('Menu dihapus')})},
   simpanBeli(){const id=$('#b-prod').value,p=S.products[id],t=num($('#b-total').value),q=bQty(),isi=num($('#b-isi').value)||1,pack=num($('#b-pack').value);
@@ -533,7 +538,7 @@ const A={
   simpanAtur(){const st={toko:$('#s-toko').value.trim()||'Toko Saya',modalAwal:num($('#s-modal').value),pajak:num($('#s-pajak').value),margin:num($('#s-margin').value),kertas:num($('#s-kertas').value)||58,kaki:$('#s-kaki').value.trim(),bulat:num($('#s-bulat').value)||500,ch:{}};sinkK();st.kemasan=kD.filter(k=>k.pid&&k.qty>0);
     ['gofood','grabfood','shopeefood'].forEach(c=>st.ch[c]={fee:num($('#f-'+c).value),markup:num($('#m-'+c).value),auto:$('#a-'+c).checked});
     run(async()=>{S.settings=st;if(db)await db.doc('settings/main').set(st);else saveLocal();toast('Pengaturan tersimpan')})},
-  hapusContoh(){run(async()=>{for(const col of ['sales','purchases','products'])for(const id of Object.keys(S[col]))if(S[col][id].contoh)await del(col,id);cart={};toast('Data contoh dihapus')})}
+  hapusContoh(){run(async()=>{for(const col of ['sales','purchases','menus','products'])for(const id of Object.keys(S[col]))if(S[col][id].contoh)await del(col,id);cart={};toast('Data contoh dihapus')})}
 };
 function autoHint(){const c=num($('#p-cost').value),st=num($('#p-stock').value),u=$('#p-unit').value.trim()||'satuan',k=num($('#p-pack').value),hp=num($('#p-hpack').value);
   $('#dlgAuto').textContent=!editId&&k>0&&hp>0?(st>0?'Bayar '+rp(k*hp)+' untuk '+nf(st)+' '+u+' → HPP '+rp(c)+' per '+u+(num($('#p-isi').value)>0?'':' · Isi per pack belum diisi, dianggap 1'):''):c>0?'HPP '+rp(c)+' per '+u:''}
@@ -551,13 +556,13 @@ function pilihanBahan(v,denganMenu){const ps=prodList(),o=x=>`<option value="${x
   return h}
 function rowsM(){
   $('#m-comps').innerHTML=mD.comps.map((c,i)=>`<div class="row mrow" data-row="c"><label style="flex:3 1 180px">Bahan atau menu<select data-f="id">${pilihanBahan(c.id?c.t+':'+c.id:'',true)}</select></label><label style="flex:1 1 80px">Jumlah dipakai<input data-f="qty" type="number" inputmode="decimal" min="0" step="any" value="${num(c.qty)}"></label><button type="button" class="btn sm" data-act="mDelComp" data-id="${i}">Hapus</button></div>`).join('')||'<p class="hint">Belum ada isi. Tekan Tambah isi lalu pilih bahan dari gudang.</p>';
-  $('#m-opts').innerHTML=(mD.opts.length?`<label>Nama pilihan<input id="m-optname" type="text" placeholder="Es batu" value="${esc(mD.optName||'')}"></label>`:'')+mD.opts.map((c,i)=>`<div class="row mrow" data-row="o"><label style="flex:2 1 120px">Label<input data-f="label" type="text" placeholder="Es batu custom" value="${esc(c.label||'')}"></label><label style="flex:3 1 160px">Bahan<select data-f="pid">${pilihanBahan(c.pid?'p:'+c.pid:'',false)}</select></label><label style="flex:1 1 70px">Jumlah<input data-f="qty" type="number" inputmode="decimal" min="0" step="any" value="${num(c.qty)}"></label><button type="button" class="btn sm" data-act="mDelOpt" data-id="${i}">Hapus</button></div>`).join('');
+  $('#m-opts').innerHTML=(mD.opts.length?`<label>Nama pilihan<input id="m-optname" type="text" placeholder="Es batu" value="${esc(mD.optName||'')}"></label>`:'')+mD.opts.map((c,i)=>`<div class="row mrow" data-row="o"><label style="flex:2 1 120px">Label<input data-f="label" type="text" placeholder="Es batu custom" value="${esc(c.label||'')}"></label><label style="flex:3 1 160px">Bahan<select data-f="pid">${pilihanBahan(c.pid?'p:'+c.pid:'',false)}</select></label><label style="flex:1 1 70px">Jumlah<input data-f="qty" type="number" inputmode="decimal" min="0" step="any" value="${num(c.qty)}"></label><label style="flex:1 1 110px">Tambahan harga (Rp)<input data-f="add" type="number" inputmode="numeric" min="0" step="any" value="${num(c.add)}"></label><button type="button" class="btn sm" data-act="mDelOpt" data-id="${i}">Hapus</button></div>`).join('');
   prevM()}
 function sinkM(){
   mD.comps=[...document.querySelectorAll('#m-comps [data-row]')].map(r=>{const v=r.querySelector('[data-f=id]').value;return{t:v.startsWith('m:')?'m':'p',id:v.slice(2),qty:num(r.querySelector('[data-f=qty]').value)}});
-  mD.opts=[...document.querySelectorAll('#m-opts [data-row]')].map(r=>({label:r.querySelector('[data-f=label]').value.trim(),pid:r.querySelector('[data-f=pid]').value.slice(2),qty:num(r.querySelector('[data-f=qty]').value)}));
+  mD.opts=[...document.querySelectorAll('#m-opts [data-row]')].map(r=>({label:r.querySelector('[data-f=label]').value.trim(),pid:r.querySelector('[data-f=pid]').value.slice(2),qty:num(r.querySelector('[data-f=qty]').value),add:num(r.querySelector('[data-f=add]').value)}));
   const on=$('#m-optname');if(on)mD.optName=on.value.trim()}
-const draftM=()=>({comps:mD.comps.filter(c=>c.id&&c.qty>0),opts:mD.opts.filter(c=>c.pid),optName:mD.optName||'',auto:$('#m-auto').checked,margin:num($('#m-margin').value),price:num($('#m-price').value)});
+const draftM=()=>({comps:mD.comps.filter(c=>c.id&&c.qty>0),opts:mD.opts.filter(c=>c.pid||c.label),optName:mD.optName||'',auto:$('#m-auto').checked,margin:num($('#m-margin').value),price:num($('#m-price').value)});
 function prevM(){const m=draftM(),n=Math.max(m.opts.length,1),a=[];$('#m-price').disabled=m.auto;$('#m-margin').disabled=!m.auto;
   if(!m.comps.length&&!m.opts.length){$('#m-prev').textContent='HPP dan harga jual muncul setelah isi menu dipilih.';return}
   for(let o=0;o<n;o++){const h=menuHpp(m,o),hj=menuHarga(m,o);a.push((m.opts.length?optNama(m,o)+': ':'')+'HPP '+rp(h)+' → jual '+rp(hj)+' (untung '+rp(hj-h)+', margin '+pct(hj-h,hj)+') · GoFood '+rp(hargaApp(hj,'gofood'))+' · GrabFood '+rp(hargaApp(hj,'grabfood'))+' · ShopeeFood '+rp(hargaApp(hj,'shopeefood')))}
