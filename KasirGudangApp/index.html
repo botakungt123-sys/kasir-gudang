@@ -708,7 +708,7 @@ function render(){
   const tM=ms.filter(m=>!q||m.name.toLowerCase().includes(q));
   $('#shelf').innerHTML=tM.length?tM.map(m=>{const gp=grupPil(m),no=gp.length,n=bisa(m,'',used);
     return`<button class="item" data-act="tambah" data-id="m:${m.id}" ${n<1?'disabled':''}><span class="tag">${m.kind==='paket'?'Paket':'Alacarte'}${m.kind!=='paket'&&m.kategori?' · '+KAT[m.kategori]:''}</span><b>${esc(m.name)}</b><span class="p">${no?'mulai ':''}${rp(menuCh(m,'',chan))}</span><span class="s ${n<1?'out':''}">${n<1?((m.comps||[]).length?'Bahan habis':'Belum ada isi'):'Bisa '+nf(n)+' porsi'}${no?' · pilih '+esc(gp.map(g=>g.name).join(', ')):''}</span></button>`}).join('')
-    :`<p class="empty">${ms.length?'Tidak ada menu dengan nama itu.':'Belum ada menu. Beli bahan di Pembelian, lalu buat menu di tab Menu.'}</p>`;
+    :`<p class="empty">${ms.length?'Tidak ada menu dengan nama itu.':PERAN==='kasir'?'Data menu dari owner belum masuk. Minta owner membuka aplikasinya sekali (tersambung internet), lalu tunggu sebentar.':'Belum ada menu. Beli bahan di Pembelian, lalu buat menu di tab Menu.'}</p>`;
   $('#chan').innerHTML=Object.keys(CH).map(c=>`<button data-act="chan" data-id="${c}" aria-pressed="${c===chan}">${CH[c]}</button>`).join('');
   const n=hitungNota();
   $('#lines').innerHTML=n.items.length?n.items.map(i=>`<div class="line"><span class="nm">${esc(i.name)}</span><span>${rp(i.price*i.qty)}</span><span class="qty"><button data-act="kurang" data-id="${i.id}" aria-label="Kurangi">−</button>${nf(i.qty)}<button data-act="tambah" data-id="${i.id}" aria-label="Tambah">+</button> × ${rp(i.price)}</span><span></span></div>`).join(''):'<span class="sub" style="color:var(--muted)">Ketuk menu untuk menambah.</span>';
@@ -830,8 +830,8 @@ function turunanKasir(){const pend={};Object.values(S.jual).filter(j=>!j.stokOk)
   const M={};for(const [id,m] of Object.entries(S.publik))if(id.startsWith('m_'))M[id.slice(2)]=m;S.menus=M;
   if(S.publik._set)S.settings=mergeSet(S.publik._set);S.logo=(S.publik._logo||{}).data||''}
 const stab=o=>Array.isArray(o)?'['+o.map(stab).join(',')+']':o&&typeof o==='object'?'{'+Object.keys(o).filter(k=>o[k]!==undefined).sort().map(k=>JSON.stringify(k)+':'+stab(o[k])).join(',')+'}':JSON.stringify(o===undefined?null:o);
-let pubT=null;function jadwalPublik(){if(PERAN!=='owner'||!db||!db.rootDoc||!Object.keys(S.anggota).length)return;clearTimeout(pubT);pubT=setTimeout(sinkPublik,1500)}
-function sinkPublik(){if(PERAN!=='owner'||!db||!db.rootDoc||!Object.keys(S.anggota).length)return 0;const st=S.settings,w={stok:{},publik:{}};let n=0;
+let pubT=null;function jadwalPublik(){if(PERAN!=='owner'||!db||!db.rootDoc||!(Object.keys(S.anggota).length||Object.keys(S.kodeKasir).length))return;clearTimeout(pubT);pubT=setTimeout(sinkPublik,1500)}
+function sinkPublik(){if(PERAN!=='owner'||!db||!db.rootDoc||!(Object.keys(S.anggota).length||Object.keys(S.kodeKasir).length))return 0;const st=S.settings,w={stok:{},publik:{}};let n=0;
   for(const [id,p] of Object.entries(S.products))w.stok[id]={name:p.name,unit:p.unit||'',stock:r2(p.stock),min:num(p.min),jenis:p.jenis||'bahan'};
   for(const [id,m] of Object.entries(S.menus))w.publik['m_'+id]={name:m.name,kind:m.kind||'alacarte',kategori:m.kategori||'lain',kemasKat:m.kemasKat!==false,comps:(m.comps||[]).map(c=>({t:c.t,id:c.id,qty:num(c.qty),porsi:num(c.porsi)||1})),optGroups:grupPil(m).map(g=>({name:g.name,opts:g.opts.map(op=>({label:op.label||'',...opRef(op),qty:op.qty===''||op.qty==null?1:num(op.qty),add:num(op.add)}))})),ext:m.ext||{},base:menuBase(m)};
   w.publik._set={toko:st.toko||'',pajak:num(st.pajak),bulat:B(),kertas:num(st.kertas)||58,kaki:st.kaki||'',tema:st.tema||{},logoStruk:st.logoStruk!==false,watermark:!!st.watermark,kemasan:st.kemasan||[],kemasKat:st.kemasKat||{},ch:st.ch,qris:st.qris||''};
@@ -1046,7 +1046,7 @@ const A={
   strukJual(id){if(S.jual[id])bukaStruk(S.jual[id])},
   buatKodeKasir(){if(!db||!db.rootDoc)return;const nama=$('#kk-nama').value.trim();if(!nama){toast('Isi nama kasir dulu');return}
     const H='ABCDEFGHJKLMNPQRSTUVWXYZ23456789',a=new Uint32Array(8);crypto.getRandomValues(a);const k=[...a].map(x=>H[x%32]).join('');
-    run(async()=>{await db.rootDoc('undangan/'+k).set({toko:SAYA.uid,nama,ts:Date.now(),dipakai:null});await put('kodeKasir',k,{nama,ts:Date.now()});$('#kk-nama').value='';toast('Kode untuk '+nama+': '+k.slice(0,4)+'-'+k.slice(4))})},
+    run(async()=>{await db.rootDoc('undangan/'+k).set({toko:SAYA.uid,nama,ts:Date.now(),dipakai:null});await put('kodeKasir',k,{nama,ts:Date.now()});sinkPublik();$('#kk-nama').value='';toast('Kode untuk '+nama+': '+k.slice(0,4)+'-'+k.slice(4))})},
   hapusKodeKasir(k){if(!S.kodeKasir[k])return;run(async()=>{await db.rootDoc('undangan/'+k).delete();await del('kodeKasir',k);toast('Kode dihapus. Kasir yang sudah masuk tetap terdaftar; hapus di daftar kasir bila perlu.')})},
   aktifKasir(id){const a=S.anggota[id];if(!a)return;run(async()=>{await put('anggota',id,{...a,aktif:!a.aktif});toast(a.aktif?'Kasir dinonaktifkan':'Kasir diaktifkan')})},
   hapusKasir(id){if(!S.anggota[id])return;run(async()=>{await del('anggota',id);toast('Kasir dihapus')})},
