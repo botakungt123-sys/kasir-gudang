@@ -355,9 +355,9 @@ dialog form{display:flex;flex-direction:column;gap:12px}
     <div class="stack" id="m-comps" style="gap:8px"></div>
     <div class="row"><button type="button" class="btn sm" data-act="mAddComp">Tambah isi</button></div>
     <span class="sec">Pilihan pelanggan (opsional)</span>
-    <p class="hint">Contoh: Es batu ori (gratis) atau Es batu custom (tambah Rp 2.000). Pelanggan memilih satu saat dipesan. Tambahan harga 0 berarti gratis; bahannya tetap dihitung ke HPP. Bahan boleh dikosongkan, misalnya untuk pilihan Tanpa es.</p>
-    <div class="stack" id="m-opts" style="gap:8px"></div>
-    <div class="row"><button type="button" class="btn sm" data-act="mAddOpt">Tambah pilihan</button></div>
+    <p class="hint">Buat satu grup untuk tiap hal yang dipilih pelanggan, misalnya Saus, Bagian ayam, Minuman. Di setiap grup pelanggan memilih satu. Isi tambahan harga 0 untuk pilihan gratis. Pilihan boleh berupa bahan atau menu lain (misalnya Es Teh), dan bahan serta kemasannya ikut dihitung. Bahan boleh dikosongkan, misalnya untuk "Tanpa minuman".</p>
+    <div class="stack" id="m-opts" style="gap:14px"></div>
+    <div class="row"><button type="button" class="btn sm" data-act="mAddGrp">Tambah grup pilihan</button></div>
     <span class="sec">Harga</span>
     <label class="chk"><input id="m-auto" type="checkbox">Harga otomatis dari HPP bahan dan target margin</label>
     <div class="row"><label>Target margin (%)<input id="m-margin" type="number" inputmode="decimal" min="0" max="99" step="any"></label><label>Harga jual manual (Rp)<input id="m-price" type="number" inputmode="numeric" min="0"></label></div>
@@ -392,7 +392,8 @@ const DEF={toko:'Toko Saya',modalAwal:0,modalAuto:true,pajak:0,margin:40,bulat:5
 const S={gambar:'',logo:'',products:{},menus:{},pesanan:{},integrasi:{},purchases:{},sales:{},settings:JSON.parse(JSON.stringify(DEF))};
 const LS='kasir-gudang-v1';
 let cara='tunai',qrisSiap=false;
-let db=null,mode='memuat',cart={},chan='offline',editId=null,editM=null,mD={comps:[],opts:[]},kD={order:[],makanan:[],minuman:[]},busy=false,akhir=null,kemasDelta={},prosesId=null,mapTunda=null,strukNow=null,btDev=null,btCh=null;const DI_CLAUDE=!!(window.claude&&window.claude.use);
+let pilihM=null;
+let db=null,mode='memuat',cart={},chan='offline',editId=null,editM=null,mD={comps:[],groups:[]},kD={order:[],makanan:[],minuman:[]},busy=false,akhir=null,kemasDelta={},prosesId=null,mapTunda=null,strukNow=null,btDev=null,btCh=null;const DI_CLAUDE=!!(window.claude&&window.claude.use);
 
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -417,33 +418,41 @@ const HJ=p=>Math.ceil((p.price||0)/B())*B();
 const hargaApp=(h,c)=>{const k=S.settings.ch[c],f=num(k.fee);return k.auto!==false&&f<100?Math.ceil(h/(1-f/100)/B())*B():Math.ceil(h*(1+num(k.markup)/100)/B())*B()};
 const hargaCh=(p,c)=>c==='offline'?HJ(p):hargaApp(HJ(p),c);
 const hargaAuto=(c,m)=>c>0&&m<100?Math.ceil(c/(1-m/100)/B())*B():0;
+// Pilihan bergrup: m.optGroups=[{name,opts:[{label,t:'p'|'m',id,qty,add}]}]. Data lama (optName+opts) dibaca sebagai 1 grup.
+const opRef=op=>op.t==='m'?{t:'m',id:op.id}:{t:'p',id:op.id||op.pid||''};
+const grupPil=m=>m&&m.optGroups&&m.optGroups.length?m.optGroups:((m&&m.opts||[]).length?[{name:m.optName||'Pilihan',opts:m.opts}]:[]);
+const pilIdx=(m,o)=>{const g=grupPil(m),a=String(o==null?'':o).split('.').map(x=>parseInt(x,10));return g.map((gr,i)=>Number.isFinite(a[i])&&a[i]>=0&&a[i]<gr.opts.length?a[i]:0)};
+const pilKode=(m,o)=>pilIdx(m,o).join('.');
+const pilDipilih=(m,o)=>{const g=grupPil(m),ix=pilIdx(m,o);return g.map((gr,i)=>gr.opts[ix[i]]).filter(Boolean)};
 function pakai(m,o,qty,out,d){d=d||0;if(!m||d>4)return out;
-  (m.comps||[]).forEach(c=>{const q=num(c.qty)/(num(c.porsi)||1)*qty;if(c.t==='m')pakai(S.menus[c.id],0,q,out,d+1);else out[c.id]=(out[c.id]||0)+q});
-  const op=(m.opts||[])[o||0];if(op&&op.pid)out[op.pid]=(out[op.pid]||0)+num(op.qty)*qty;return out}
+  (m.comps||[]).forEach(c=>{const q=num(c.qty)/(num(c.porsi)||1)*qty;if(c.t==='m')pakai(S.menus[c.id],'',q,out,d+1);else out[c.id]=(out[c.id]||0)+q});
+  pilDipilih(m,o).forEach(op=>{const r=opRef(op),q=(op.qty===''||op.qty==null?1:num(op.qty))*qty;if(!r.id||!(q>0))return;if(r.t==='m')pakai(S.menus[r.id],'',q,out,d+1);else out[r.id]=(out[r.id]||0)+q});return out}
 const hppPakai=u=>Object.keys(u).reduce((a,id)=>a+(S.products[id]?(S.products[id].cost||0)*u[id]:0),0);
 const menuHpp=(m,o)=>hppPakai(pakai(m,o,1,{}));
 // Harga = harga dasar + tambahan pilihan. Harga dasar otomatis menutup HPP isi menu + pilihan gratis yang paling mahal.
-const optHpp=op=>op&&op.pid&&S.products[op.pid]?(S.products[op.pid].cost||0)*num(op.qty):0;
-const optAdd=(m,o)=>{const op=(m.opts||[])[o||0],a=op?num(op.add):0;return a>0?Math.ceil(a/B())*B():0};
-const menuBase=m=>{const gratis=(m.opts||[]).filter(op=>!(num(op.add)>0)),h=hppPakai(pakai({comps:m.comps},0,1,{}))+(gratis.length?Math.max(...gratis.map(optHpp)):0)+kemasHpp(m);
+const optHpp=op=>{const r=opRef(op),q=op.qty===''||op.qty==null?1:num(op.qty);if(!r.id)return 0;if(r.t==='m'){const sm=S.menus[r.id];return sm?(menuHpp(sm,'')+kemasHpp(sm))*q:0}return S.products[r.id]?(S.products[r.id].cost||0)*q:0};
+const optAdd=(m,o)=>pilDipilih(m,o).reduce((a,op)=>a+(num(op.add)>0?Math.ceil(num(op.add)/B())*B():0),0);
+const menuBase=m=>{const h=hppPakai(pakai({comps:m.comps},'',1,{}))+grupPil(m).reduce((a,g)=>{const gr=g.opts.filter(op=>!(num(op.add)>0));return a+(gr.length?Math.max(...gr.map(optHpp)):0)},0)+kemasHpp(m);
   return(m.auto!==false?hargaAuto(h,num(m.margin)):0)||Math.ceil((m.price||0)/B())*B()};
 const menuHarga=(m,o)=>menuBase(m)+optAdd(m,o);
 const menuCh=(m,o,c)=>c==='offline'?menuHarga(m,o):hargaApp(menuHarga(m,o),c);
-const optNama=(m,o)=>{const op=(m.opts||[])[o];return op?(op.label||(S.products[op.pid]||{}).name||''):''};
+const opLabel=op=>{const r=opRef(op);return op.label||(r.t==='m'?(S.menus[r.id]||{}).name:(S.products[r.id]||{}).name)||''};
+const optNama=(m,o)=>pilDipilih(m,o).map(opLabel).filter(Boolean).join(', ');
 function butuhCart(){const u={};for(const k in cart){const e=cart[k];if(e.t==='m')pakai(S.menus[e.id],e.o,e.qty,u);else u[e.id]=(u[e.id]||0)+e.qty}return u}
 function bisa(m,o,used){const u=pakai(m,o,1,{});used=used||{};let n=Infinity;
   for(const id in u){if(!(u[id]>0))continue;const p=S.products[id];n=Math.min(n,p?Math.floor((p.stock-(used[id]||0))/u[id]+1e-9):0)}
   return n===Infinity?0:Math.max(n,0)}
 const menuList=()=>Object.entries(S.menus).map(([id,m])=>({id,...m})).sort((a,b)=>(a.kind==='paket'?0:1)-(b.kind==='paket'?0:1)||a.name.localeCompare(b.name,'id'));
 const KAT={makanan:'Makanan',minuman:'Minuman',lain:'Lainnya'};
-function kemasMenu(m,qty,out,d){d=d||0;if(!m||d>4)return out;
+function kemasMenu(m,qty,out,d,o){d=d||0;if(!m||d>4)return out;
+  if(o!=null)pilDipilih(m,o).forEach(op=>{const r=opRef(op);if(r.t==='m'&&r.id)kemasMenu(S.menus[r.id],qty*(op.qty===''||op.qty==null?1:num(op.qty)),out,d+1,'')});
   if(m.kind==='paket'){(m.comps||[]).forEach(c=>{if(c.t==='m')kemasMenu(S.menus[c.id],qty*num(c.qty),out,d+1)});return out}
   if(m.kemasKat===false)return out;
   (((S.settings.kemasKat||{})[m.kategori])||[]).forEach(k=>{if(k.pid)out[k.pid]=(out[k.pid]||0)+num(k.qty)*qty});return out}
 const kemasHpp=m=>hppPakai(kemasMenu(m,1,{}));
 const kemasDefault=()=>{const o={};if(!Object.keys(cart).length)return o;
   (S.settings.kemasan||[]).forEach(k=>{if(k.pid)o[k.pid]=(o[k.pid]||0)+Math.max(num(k.qty),0)});
-  for(const k in cart){const e=cart[k];if(e.t==='m')kemasMenu(S.menus[e.id],e.qty,o)}return o};
+  for(const k in cart){const e=cart[k];if(e.t==='m')kemasMenu(S.menus[e.id],e.qty,o,0,e.o)}return o};
 const kemasNow=()=>{const o=kemasDefault();for(const id in kemasDelta)o[id]=Math.max((o[id]||0)+kemasDelta[id],0);return o};
 const norm=t=>String(t||'').trim().toLowerCase().replace(/\s+/g,' ');
 function cariMenu(ch,nama){const n=norm(nama);if(!n)return null;const ms=menuList();
@@ -549,6 +558,10 @@ function bukaQris(total){let p;try{p=qrisNominal(S.settings.qris,total)}catch(e)
   const c=cekQris(S.settings.qris);$('#qNama').textContent=(c.nama||'')+(c.kota?' · '+c.kota:'');$('#qTotal').textContent=rp(total);gambarQR($('#qCanvas'),buatQR(p,1));$('#dlgQ').showModal()}
 function statusQris(){const t=$('#q-teks').value.trim();if(!t){$('#q-status').textContent=S.settings.qris?'':'Belum ada QRIS tersimpan.';return}
   const c=cekQris(t);$('#q-status').textContent=c.ok?'QRIS valid: '+c.nama+(c.kota?', '+c.kota:'')+(c.dinamis?' (ini QRIS dinamis; sebaiknya pakai QRIS statis)':''):'Belum valid: '+c.pesan}
+function gambarPilih(){const m=S.menus[pilihM.id];if(!m)return;const o=pilihM.ix.join('.'),u=butuhCart(),ok=bisa(m,o,u)>=1;
+  $('#oTitle').textContent=m.name;
+  $('#oList').innerHTML=grupPil(m).map((g,gi)=>`<div class="stack" style="gap:6px"><span class="sec">${esc(g.name)}</span><div class="seg">${g.opts.map((op,i)=>`<button type="button" data-act="pilihOpt" data-id="${gi}-${i}" aria-pressed="${pilihM.ix[gi]===i}">${esc(opLabel(op))}${num(op.add)>0?' +'+nf(Math.ceil(num(op.add)/B())*B()):''}</button>`).join('')}</div></div>`).join('')
+    +`<div class="row" style="justify-content:space-between;align-items:center"><b class="num" style="font-size:18px">${rp(menuCh(m,o,chan))}</b><button type="button" class="btn primary" data-act="tambah" data-id="m:${pilihM.id}:${o}" ${ok?'':'disabled'}>${ok?'Tambah ke nota':'Bahan habis'}</button></div>`}
 function hitungNota(){
   const items=[];let sub=0,hpp=0;
   for(const k in cart){const e=cart[k];let name,h,c,use;
@@ -590,8 +603,8 @@ function render(){
   const pp=prosesId&&S.pesanan[prosesId];$('#prosesInfo').hidden=!pp;if(pp)$('#prosesInfo').textContent='Memproses pesanan '+(CH[pp.channel]||'')+' dari '+(pp.pemesan||'tanpa nama')+'. Cek kemasan, lalu Simpan transaksi.';
   const used=butuhCart(),ms=menuList();
   const tM=ms.filter(m=>!q||m.name.toLowerCase().includes(q));
-  $('#shelf').innerHTML=tM.length?tM.map(m=>{const no=(m.opts||[]).length,n=Math.max(...(no?m.opts.map((_,o)=>bisa(m,o,used)):[bisa(m,0,used)]));
-    return`<button class="item" data-act="tambah" data-id="m:${m.id}" ${n<1?'disabled':''}><span class="tag">${m.kind==='paket'?'Paket':'Alacarte'}${m.kind!=='paket'&&m.kategori?' · '+KAT[m.kategori]:''}</span><b>${esc(m.name)}</b><span class="p">${rp(menuCh(m,0,chan))}</span><span class="s ${n<1?'out':''}">${n<1?((m.comps||[]).length?'Bahan habis':'Belum ada isi'):'Bisa '+nf(n)+' porsi'}${no>1?' · '+no+' pilihan':''}</span></button>`}).join('')
+  $('#shelf').innerHTML=tM.length?tM.map(m=>{const gp=grupPil(m),no=gp.length,n=bisa(m,'',used);
+    return`<button class="item" data-act="tambah" data-id="m:${m.id}" ${n<1?'disabled':''}><span class="tag">${m.kind==='paket'?'Paket':'Alacarte'}${m.kind!=='paket'&&m.kategori?' · '+KAT[m.kategori]:''}</span><b>${esc(m.name)}</b><span class="p">${no?'mulai ':''}${rp(menuCh(m,'',chan))}</span><span class="s ${n<1?'out':''}">${n<1?((m.comps||[]).length?'Bahan habis':'Belum ada isi'):'Bisa '+nf(n)+' porsi'}${no?' · pilih '+esc(gp.map(g=>g.name).join(', ')):''}</span></button>`}).join('')
     :`<p class="empty">${ms.length?'Tidak ada menu dengan nama itu.':'Belum ada menu. Beli bahan di Pembelian, lalu buat menu di tab Menu.'}</p>`;
   $('#chan').innerHTML=Object.keys(CH).map(c=>`<button data-act="chan" data-id="${c}" aria-pressed="${c===chan}">${CH[c]}</button>`).join('');
   const n=hitungNota();
@@ -622,7 +635,7 @@ function render(){
   rowsKunci();
   // menu
   $('#tMenu').innerHTML=ms.length?ms.map(m=>{const h=menuHpp(m,0)+kemasHpp(m),hj=menuHarga(m,0);
-    const isi=(m.comps||[]).map(c=>nf(num(c.qty))+((num(c.porsi)||1)>1?'/'+nf(num(c.porsi))+' porsi':'')+' '+(c.t==='m'?(S.menus[c.id]||{}).name||'(menu dihapus)':((S.products[c.id]||{}).unit||'')+' '+((S.products[c.id]||{}).name||'(bahan dihapus)'))).join(', ')+((m.opts||[]).length?' + pilihan '+(m.optName||'')+': '+m.opts.map((_,o)=>optNama(m,o)+(optAdd(m,o)?' (+'+rp(optAdd(m,o))+')':' (gratis)')).join(' / '):'');
+    const isi=(m.comps||[]).map(c=>nf(num(c.qty))+((num(c.porsi)||1)>1?'/'+nf(num(c.porsi))+' porsi':'')+' '+(c.t==='m'?(S.menus[c.id]||{}).name||'(menu dihapus)':((S.products[c.id]||{}).unit||'')+' '+((S.products[c.id]||{}).name||'(bahan dihapus)'))).join(', ')+grupPil(m).map(g=>' + '+g.name+': '+g.opts.map(op=>opLabel(op)+(num(op.add)>0?' (+'+rp(Math.ceil(num(op.add)/B())*B())+')':'')).join(' / ')).join('');
     return`<tr><td class="wrapc"><b>${esc(m.name)}</b></td><td>${m.kind==='paket'?'Paket':'Alacarte'}${m.kind!=='paket'&&m.kategori?' · '+KAT[m.kategori]:''}</td><td class="wrapc">${esc(isi)}${kemasHpp(m)?' + kemasan '+esc(Object.entries(kemasMenu(m,1,{})).map(([id,q])=>nf(q)+' '+((S.products[id]||{}).name||'')).join(', ')):''}</td><td class="r">${rp(h)}</td><td class="r">${rp(hj)}</td><td class="r">${rp(hargaApp(hj,'gofood'))}</td><td class="r">${rp(hargaApp(hj,'grabfood'))}</td><td class="r">${rp(hargaApp(hj,'shopeefood'))}</td><td class="r">${pct(hj-h,hj)}</td><td class="r">${nf(bisa(m,0))}</td><td><button class="btn sm" data-act="ubahMenu" data-id="${m.id}">Ubah</button></td></tr>`}).join('')
     :'<tr><td colspan="11"><p class="empty">Belum ada menu. Beli bahannya dulu di Pembelian (ayam, nasi, sambal), lalu tekan Buat menu.</p></td></tr>';
 
@@ -687,10 +700,9 @@ function tab(t){if(!$('#v-'+t))t='kasir';['kasir','gudang','menu','beli','lapora
 /* ---------- aksi ---------- */
 const A={
   tambah(k){let[t,id,o]=k.split(':');
-    if(t==='m'){const m=S.menus[id];if(!m)return;const no=(m.opts||[]).length;
-      if(o==null&&no>1){$('#oTitle').textContent=m.name+': '+(m.optName||'pilih');const u=butuhCart();
-        $('#oList').innerHTML=m.opts.map((_,x)=>`<button type="button" class="item" data-act="tambah" data-id="m:${id}:${x}" ${bisa(m,x,u)<1?'disabled':''}><span class="tag">${optAdd(m,x)?'+ '+rp(menuCh(m,x,chan)-menuCh(m,m.opts.findIndex(q=>!(num(q.add)>0))<0?x:m.opts.findIndex(q=>!(num(q.add)>0)),chan)||optAdd(m,x)):'Gratis'}</span><b>${esc(optNama(m,x))}</b><span class="p">${rp(menuCh(m,x,chan))}</span><span class="s">${bisa(m,x,u)<1?'Bahan habis':'HPP '+rp(menuHpp(m,x))}</span></button>`).join('');$('#dlgO').showModal();return}
-      o=+(o||0);if($('#dlgO').open)$('#dlgO').close();
+    if(t==='m'){const m=S.menus[id];if(!m)return;
+      if(o==null&&grupPil(m).some(g=>g.opts.length>1)){pilihM={id,ix:pilIdx(m,'')};gambarPilih();$('#dlgO').showModal();return}
+      o=pilKode(m,o);if($('#dlgO').open)$('#dlgO').close();
       if(bisa(m,o,butuhCart())<1){toast('Bahan '+m.name+' tidak cukup');return}
       k='m:'+id+':'+o;cart[k]=cart[k]||{t:'m',id,o,qty:0};cart[k].qty++}
     else{const p=S.products[id];if(!p)return;if((butuhCart()[id]||0)+1>p.stock){toast('Stok '+p.name+' tidak cukup');return}
@@ -765,6 +777,7 @@ const A={
   simpanQris(){const t=$('#q-teks').value.trim(),c=cekQris(t);if(!c.ok){toast(c.pesan);return}
     run(async()=>{S.settings={...S.settings,qris:t};if(db)await db.doc('settings/main').set(S.settings);else saveLocal();toast('QRIS '+c.nama+' tersimpan')})},
   hapusQris(){run(async()=>{const st={...S.settings};delete st.qris;S.settings=st;if(db)await db.doc('settings/main').set(st);else saveLocal();$('#q-teks').value='';statusQris();toast('QRIS dihapus')})},
+  pilihOpt(x){const[g,i]=x.split('-').map(Number);if(!pilihM)return;pilihM.ix[g]=i;gambarPilih()},
   ekspor(){const d=new Date(),a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify({app:'kasir-gudang',v:1,ts:Date.now(),products:S.products,menus:S.menus,purchases:S.purchases,sales:S.sales,settings:S.settings})],{type:'application/json'}));
     a.download='kasir-gudang-'+d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0')+'.json';document.body.appendChild(a);a.click();a.remove();toast('File cadangan diunduh')},
   keluar(){firebase.auth().signOut()},
@@ -772,8 +785,10 @@ const A={
   menuBaru(){bukaMenu(null)},ubahMenu(id){bukaMenu(id)},
   mAddComp(){sinkM();mD.comps.push({t:'p',id:'',qty:1});rowsM()},
   mDelComp(i){sinkM();mD.comps.splice(+i,1);rowsM()},
-  mAddOpt(){sinkM();mD.opts.push({label:'',pid:'',qty:1,add:0});rowsM()},
-  mDelOpt(i){sinkM();mD.opts.splice(+i,1);rowsM()},
+  mAddGrp(){sinkM();mD.groups.push({name:'',opts:[{label:'',t:'p',id:'',qty:1,add:0},{label:'',t:'p',id:'',qty:1,add:0}]});rowsM()},
+  mDelGrp(g){sinkM();mD.groups.splice(+g,1);rowsM()},
+  mAddOpt(g){sinkM();mD.groups[+g].opts.push({label:'',t:'p',id:'',qty:1,add:0});rowsM()},
+  mDelOpt(x){const[g,i]=x.split('-').map(Number);sinkM();mD.groups[g].opts.splice(i,1);rowsM()},
   hapusMenu(){const id=editM;if(!id)return;$('#dlgM').close();cart={};run(async()=>{await del('menus',id);toast('Menu dihapus')})},
   simpanBeli(){const id=$('#b-prod').value,p=S.products[id],t=num($('#b-total').value),q=bQty(),isi=num($('#b-isi').value)||1,pack=num($('#b-pack').value);
     if(!p){toast('Belum ada barang. Tekan Beli barang baru.');return}if(!(t>=0&&q>0)||$('#b-total').value===''){toast('Isi jumlah beli dan harga per pack');return}
@@ -811,21 +826,24 @@ function pilihanBahan(v,denganMenu,hanyaKemas){const ps=prodList(),o=x=>`<option
   return h}
 function rowsM(){
   $('#m-comps').innerHTML=mD.comps.map((c,i)=>`<div class="row mrow" data-row="c"><label style="flex:3 1 180px">Bahan atau menu<select data-f="id">${pilihanBahan(c.id?c.t+':'+c.id:'',true)}</select></label><label style="flex:1 1 80px">Jumlah dipakai<input data-f="qty" type="number" inputmode="decimal" min="0" step="any" value="${num(c.qty)}"></label><label style="flex:1 1 80px">Untuk berapa porsi<input data-f="porsi" type="number" inputmode="decimal" min="1" step="any" value="${num(c.porsi)||1}"></label><button type="button" class="btn sm" data-act="mDelComp" data-id="${i}">Hapus</button></div>`).join('')||'<p class="hint">Belum ada isi. Tekan Tambah isi lalu pilih bahan dari gudang.</p>';
-  $('#m-opts').innerHTML=(mD.opts.length?`<label>Nama pilihan<input id="m-optname" type="text" placeholder="Es batu" value="${esc(mD.optName||'')}"></label>`:'')+mD.opts.map((c,i)=>`<div class="row mrow" data-row="o"><label style="flex:2 1 120px">Label<input data-f="label" type="text" placeholder="Es batu custom" value="${esc(c.label||'')}"></label><label style="flex:3 1 160px">Bahan<select data-f="pid">${pilihanBahan(c.pid?'p:'+c.pid:'',false)}</select></label><label style="flex:1 1 70px">Jumlah<input data-f="qty" type="number" inputmode="decimal" min="0" step="any" value="${num(c.qty)}"></label><label style="flex:1 1 110px">Tambahan harga (Rp)<input data-f="add" type="number" inputmode="numeric" min="0" step="any" value="${num(c.add)}"></label><button type="button" class="btn sm" data-act="mDelOpt" data-id="${i}">Hapus</button></div>`).join('');
+  $('#m-opts').innerHTML=mD.groups.map((g,gi)=>`<div class="stack" data-grp="${gi}" style="gap:8px;border-left:3px solid var(--line);padding-left:10px"><div class="row mrow"><label style="flex:2 1 160px">Nama grup<input data-f="gname" type="text" placeholder="mis. Saus / Bagian ayam / Minuman" value="${esc(g.name||'')}"></label><button type="button" class="btn sm danger" data-act="mDelGrp" data-id="${gi}">Hapus grup</button></div>`
+    +g.opts.map((c,i)=>`<div class="row mrow" data-row="o"><label style="flex:2 1 120px">Label<input data-f="label" type="text" placeholder="mis. Paha atas" value="${esc(c.label||'')}"></label><label style="flex:3 1 160px">Bahan atau menu<select data-f="ref">${pilihanBahan(opRef(c).id?opRef(c).t+':'+opRef(c).id:'',true)}</select></label><label style="flex:1 1 70px">Jumlah<input data-f="qty" type="number" inputmode="decimal" min="0" step="any" value="${c.qty===''||c.qty==null?1:num(c.qty)}"></label><label style="flex:1 1 110px">Tambahan harga (Rp)<input data-f="add" type="number" inputmode="numeric" min="0" step="any" value="${num(c.add)}"></label><button type="button" class="btn sm" data-act="mDelOpt" data-id="${gi}-${i}">Hapus</button></div>`).join('')
+    +`<div class="row"><button type="button" class="btn sm" data-act="mAddOpt" data-id="${gi}">Tambah pilihan di grup ini</button></div></div>`).join('');
   prevM()}
 function sinkM(){
   mD.comps=[...document.querySelectorAll('#m-comps [data-row]')].map(r=>{const v=r.querySelector('[data-f=id]').value;return{t:v.startsWith('m:')?'m':'p',id:v.slice(2),qty:num(r.querySelector('[data-f=qty]').value),porsi:Math.max(num(r.querySelector('[data-f=porsi]').value),1)}});
-  mD.opts=[...document.querySelectorAll('#m-opts [data-row]')].map(r=>({label:r.querySelector('[data-f=label]').value.trim(),pid:r.querySelector('[data-f=pid]').value.slice(2),qty:num(r.querySelector('[data-f=qty]').value),add:num(r.querySelector('[data-f=add]').value)}));
-  const on=$('#m-optname');if(on)mD.optName=on.value.trim()}
-const draftM=()=>({ext:{gofood:$('#m-ext-gofood').value.trim(),grabfood:$('#m-ext-grabfood').value.trim(),shopeefood:$('#m-ext-shopeefood').value.trim()},kind:$('#m-kind').value,kategori:$('#m-kat').value,kemasKat:$('#m-kemkat').checked,comps:mD.comps.filter(c=>c.id&&c.qty>0),opts:mD.opts.filter(c=>c.pid||c.label),optName:mD.optName||'',auto:$('#m-auto').checked,margin:num($('#m-margin').value),price:num($('#m-price').value)});
-function prevM(){const m=draftM(),n=Math.max(m.opts.length,1),a=[];$('#m-price').disabled=m.auto;$('#m-margin').disabled=!m.auto;
-  if(!m.comps.length&&!m.opts.length){$('#m-prev').textContent='HPP dan harga jual muncul setelah isi menu dipilih.';return}
-  for(let o=0;o<n;o++){const h=menuHpp(m,o)+kemasHpp(m),hj=menuHarga(m,o);a.push((m.opts.length?optNama(m,o)+': ':'')+'HPP '+rp(h)+' → jual '+rp(hj)+' (untung '+rp(hj-h)+', margin '+pct(hj-h,hj)+') · GoFood '+rp(hargaApp(hj,'gofood'))+' · GrabFood '+rp(hargaApp(hj,'grabfood'))+' · ShopeeFood '+rp(hargaApp(hj,'shopeefood')))}
+  mD.groups=[...document.querySelectorAll('#m-opts [data-grp]')].map(gEl=>({name:gEl.querySelector('[data-f=gname]').value.trim(),opts:[...gEl.querySelectorAll('[data-row]')].map(r=>{const v=r.querySelector('[data-f=ref]').value;return{label:r.querySelector('[data-f=label]').value.trim(),t:v.startsWith('m:')?'m':'p',id:v.slice(2),qty:num(r.querySelector('[data-f=qty]').value),add:num(r.querySelector('[data-f=add]').value)}})}))}
+const draftM=()=>({ext:{gofood:$('#m-ext-gofood').value.trim(),grabfood:$('#m-ext-grabfood').value.trim(),shopeefood:$('#m-ext-shopeefood').value.trim()},kind:$('#m-kind').value,kategori:$('#m-kat').value,kemasKat:$('#m-kemkat').checked,comps:mD.comps.filter(c=>c.id&&c.qty>0),optGroups:mD.groups.map((g,i)=>({name:g.name||('Pilihan '+(i+1)),opts:g.opts.filter(c=>c.id||c.label)})).filter(g=>g.opts.length),opts:[],optName:'',auto:$('#m-auto').checked,margin:num($('#m-margin').value),price:num($('#m-price').value)});
+function prevM(){const m=draftM(),a=[];$('#m-price').disabled=m.auto;$('#m-margin').disabled=!m.auto;
+  if(!m.comps.length&&!m.optGroups.length){$('#m-prev').textContent='HPP dan harga jual muncul setelah isi menu dipilih.';return}
+  const baris=(lbl,o)=>{const h=menuHpp(m,o)+kemasHpp(m)+hppPakai(kemasMenu(m,1,{},0,o))-kemasHpp(m),hj=menuHarga(m,o);a.push(lbl+'HPP '+rp(h)+' → jual '+rp(hj)+' (untung '+rp(hj-h)+', margin '+pct(hj-h,hj)+') · GoFood '+rp(hargaApp(hj,'gofood'))+' · GrabFood '+rp(hargaApp(hj,'grabfood'))+' · ShopeeFood '+rp(hargaApp(hj,'shopeefood')))};
+  const gp=grupPil(m);baris(gp.length?'Pilihan pertama ('+optNama(m,'')+'): ':'', '');
+  gp.forEach((g,gi)=>g.opts.forEach((op,i)=>{if(i===0)return;const ix=gp.map(()=>0);ix[gi]=i;baris(g.name+' → '+opLabel(op)+': ',ix.join('.'))}));
   $('#m-prev').innerHTML=a.map(esc).join('<br>')}
 function bukaMenu(id){editM=id;const m=id?S.menus[id]:null;
   $('#dlgMTitle').textContent=m?'Ubah menu':'Buat menu';$('#dlgMDel').hidden=!m;$('#dlgMDel').textContent='Hapus';delete $('#dlgMDel').dataset.armed;
   $('#m-name').value=m?m.name:'';$('#m-kind').value=m?m.kind||'alacarte':'alacarte';$('#m-kat').value=m?m.kategori||'lain':'makanan';$('#m-kemkat').checked=m?m.kemasKat!==false:true;['gofood','grabfood','shopeefood'].forEach(c=>$('#m-ext-'+c).value=m&&m.ext&&m.ext[c]||'');$('#m-auto').checked=m?m.auto!==false:true;$('#m-margin').value=m?num(m.margin):num(S.settings.margin);$('#m-price').value=m?m.price||'':'';
-  mD={comps:m?(m.comps||[]).map(c=>({...c})):[{t:'p',id:'',qty:1}],opts:m?(m.opts||[]).map(c=>({...c})):[],optName:m?m.optName||'':''};
+  mD={comps:m?(m.comps||[]).map(c=>({...c})):[{t:'p',id:'',qty:1}],groups:m?grupPil(m).map(g=>({name:g.name,opts:g.opts.map(op=>({...op,...opRef(op)}))})):[]};
   rowsM();$('#dlgM').showModal()}
 $('#dlgMForm').addEventListener('input',()=>{sinkM();prevM()});
 $('#dlgMForm').addEventListener('submit',e=>{e.preventDefault();sinkM();const name=$('#m-name').value.trim(),m=draftM();if(!name)return;
