@@ -1,6 +1,6 @@
 // Kasir Gudang service worker: stale-while-revalidate untuk cangkang aplikasi + SDK + font.
 // Naikkan VERSI tiap deploy supaya cache lama dibuang.
-const VERSI='kasir-gudang-v17';
+const VERSI='kasir-gudang-v18';
 const CANGKANG=['./','./index.html','./manifest.json','./icon-192.png','./icon-512.png','./icon-maskable-512.png'];
 const CDN=['www.gstatic.com','cdnjs.cloudflare.com','fonts.googleapis.com','fonts.gstatic.com'];
 self.addEventListener('install',e=>{e.waitUntil(caches.open(VERSI).then(c=>c.addAll(CANGKANG)).then(()=>self.skipWaiting()))});
