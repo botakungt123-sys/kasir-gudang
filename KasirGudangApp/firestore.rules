@@ -1,14 +1,47 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Tiap akun hanya boleh membaca dan menulis data tokonya sendiri.
-    match /toko/{uid}/{document=**} {
-      allow read, write: if request.auth != null && request.auth.uid == uid;
+    function masuk() { return request.auth != null; }
+    function owner(t) { return masuk() && request.auth.uid == t; }
+    function anggota(t) {
+      return masuk() && exists(/databases/$(database)/documents/toko/$(t)/anggota/$(request.auth.uid))
+        && get(/databases/$(database)/documents/toko/$(t)/anggota/$(request.auth.uid)).data.aktif == true;
     }
-    // Kunci rahasia API per toko: hanya bisa ditulis atau dihapus pemiliknya, TIDAK bisa dibaca dari aplikasi.
-    // Server integrasi (Admin SDK) tetap bisa membacanya karena Admin SDK melewati aturan ini.
+    // Owner: akses penuh ke data tokonya sendiri.
+    match /toko/{t}/{document=**} {
+      allow read, write: if owner(t);
+    }
+    // Kasir aktif: stok tanpa HPP, menu berharga jadi, pesanan masuk, dan penjualan kasir.
+    match /toko/{t}/stok/{id} { allow read: if anggota(t); }
+    match /toko/{t}/publik/{id} { allow read: if anggota(t); }
+    match /toko/{t}/pesanan/{id} {
+      allow read: if anggota(t);
+      allow update: if anggota(t) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'saleId', 'tsProses']);
+    }
+    match /toko/{t}/jual/{id} {
+      allow read: if anggota(t);
+      allow create: if anggota(t)
+        && request.resource.data.kasirUid == request.auth.uid
+        && request.resource.data.pemesan is string && request.resource.data.pemesan.size() > 0
+        && request.resource.data.keys().hasAll(['ts', 'channel', 'items', 'sub'])
+        && !request.resource.data.keys().hasAny(['hpp', 'net', 'fee', 'diproses', 'stokOk']);
+    }
+    match /toko/{t}/anggota/{uid} { allow read: if masuk() && request.auth.uid == uid; }
+    match /toko/{t}/permintaan/{uid} {
+      allow read: if masuk() && request.auth.uid == uid;
+      allow create, update: if masuk() && request.auth.uid == uid && request.resource.data.keys().hasOnly(['nama', 'email', 'ts']);
+    }
+    // Akun kasir mencatat toko yang diikuti; hanya pemilik akun yang bisa membaca/menulis.
+    match /akun/{uid} { allow read, write: if masuk() && request.auth.uid == uid; }
+    // Kode toko untuk kasir bergabung: dibuat owner, bisa dibaca akun yang sudah masuk.
+    match /kode/{k} {
+      allow get: if masuk();
+      allow create: if masuk() && request.resource.data.toko == request.auth.uid;
+      allow update, delete: if masuk() && resource.data.toko == request.auth.uid;
+    }
+    // Kunci rahasia API per toko: tulis-saja, tidak bisa dibaca dari aplikasi.
     match /kunci/{uid}/platform/{plat} {
-      allow create, update, delete: if request.auth != null && request.auth.uid == uid;
+      allow create, update, delete: if masuk() && request.auth.uid == uid;
       allow read: if false;
     }
   }
