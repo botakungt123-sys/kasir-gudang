@@ -24,8 +24,13 @@ service cloud.firestore {
         && request.resource.data.kasirUid == request.auth.uid
         && request.resource.data.pemesan is string && request.resource.data.pemesan.size() > 0
         && request.resource.data.keys().hasAll(['ts', 'channel', 'items', 'sub'])
-        && !request.resource.data.keys().hasAny(['hpp', 'net', 'fee', 'diproses', 'stokOk']);
+        && !request.resource.data.keys().hasAny(['hpp', 'net', 'fee', 'diproses', 'stokOk', 'batal', 'mintaBatal']);
+      // Kasir hanya boleh mengajukan pembatalan penjualannya sendiri; owner yang memutuskan.
+      allow update: if anggota(t) && resource.data.kasirUid == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['mintaBatal']);
     }
+    // Tanda menu habis hari ini: owner dan kasir aktif.
+    match /toko/{t}/habis/{id} { allow read, write: if anggota(t); }
     match /toko/{t}/anggota/{uid} {
       allow read: if masuk() && request.auth.uid == uid;
       // Kasir mendaftarkan diri hanya dengan kode undangan sekali pakai yang dibuat owner toko ini.
