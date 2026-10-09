@@ -26,18 +26,30 @@ service cloud.firestore {
         && request.resource.data.keys().hasAll(['ts', 'channel', 'items', 'sub'])
         && !request.resource.data.keys().hasAny(['hpp', 'net', 'fee', 'diproses', 'stokOk']);
     }
-    match /toko/{t}/anggota/{uid} { allow read: if masuk() && request.auth.uid == uid; }
-    match /toko/{t}/permintaan/{uid} {
+    match /toko/{t}/anggota/{uid} {
       allow read: if masuk() && request.auth.uid == uid;
-      allow create, update: if masuk() && request.auth.uid == uid && request.resource.data.keys().hasOnly(['nama', 'email', 'ts']);
+      // Kasir mendaftarkan diri hanya dengan kode undangan sekali pakai yang dibuat owner toko ini.
+      allow create: if masuk() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['nama', 'kode', 'aktif', 'ts'])
+        && request.resource.data.aktif == true
+        && request.resource.data.kode is string
+        && get(/databases/$(database)/documents/undangan/$(request.resource.data.kode)).data.toko == t
+        && get(/databases/$(database)/documents/undangan/$(request.resource.data.kode)).data.dipakai == null
+        && getAfter(/databases/$(database)/documents/undangan/$(request.resource.data.kode)).data.dipakai == request.auth.uid
+        && request.resource.data.nama == get(/databases/$(database)/documents/undangan/$(request.resource.data.kode)).data.nama;
     }
     // Akun kasir mencatat toko yang diikuti; hanya pemilik akun yang bisa membaca/menulis.
     match /akun/{uid} { allow read, write: if masuk() && request.auth.uid == uid; }
-    // Kode toko untuk kasir bergabung: dibuat owner, bisa dibaca akun yang sudah masuk.
-    match /kode/{k} {
+    // Kode kasir sekali pakai: dibuat owner; kasir hanya bisa menandainya terpakai bersamaan dengan mendaftar.
+    match /undangan/{k} {
       allow get: if masuk();
-      allow create: if masuk() && request.resource.data.toko == request.auth.uid;
-      allow update, delete: if masuk() && resource.data.toko == request.auth.uid;
+      allow create: if masuk() && request.resource.data.toko == request.auth.uid && request.resource.data.dipakai == null;
+      allow delete: if masuk() && resource.data.toko == request.auth.uid;
+      allow update: if masuk() && (resource.data.toko == request.auth.uid
+        || (resource.data.dipakai == null
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['dipakai'])
+            && request.resource.data.dipakai == request.auth.uid
+            && existsAfter(/databases/$(database)/documents/toko/$(resource.data.toko)/anggota/$(request.auth.uid))));
     }
     // Kunci rahasia API per toko: tulis-saja, tidak bisa dibaca dari aplikasi.
     match /kunci/{uid}/platform/{plat} {
