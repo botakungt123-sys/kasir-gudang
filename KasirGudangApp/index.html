@@ -12,7 +12,7 @@
 <style>
 html{-webkit-text-size-adjust:100%}body{margin:0}img{max-width:100%}[hidden]{display:none!important}
 #login{min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:16px}
-#login form{width:min(380px,100%)}
+#login{flex-direction:column}#login form{width:min(380px,100%)}
 /* Layout: bar atas dengan tab; Kasir = rak barang di kiri + nota (struk) di kanan; tab lain = form di atas, tabel di bawah. */
 :root{
   --bg:#f3f6f4;--surface:#ffffff;--paper:#fffdf6;--ink:#14201b;--muted:#5d6b64;--line:#d9e1dc;
@@ -133,13 +133,18 @@ dialog form{display:flex;flex-direction:column;gap:12px}
 <div id="login">
   <form class="panel" id="loginForm">
     <h1>Kasir Gudang</h1>
-    <p class="hint">Owner: masuk dengan akun toko. Kasir: daftar dengan email sendiri dan isi Kode toko dari owner.</p>
+    <span class="sec">Pemilik toko</span>
     <label>Email<input id="l-email" type="email" autocomplete="username" required></label>
     <label>Kata sandi<input id="l-pass" type="password" autocomplete="current-password" minlength="6" required></label>
-    <label>Kode toko (khusus kasir)<input id="l-kode" type="text" autocomplete="off" maxlength="6" style="text-transform:uppercase" placeholder="Kosongkan bila Anda pemilik toko"></label>
-    <label>Nama kasir (khusus kasir baru)<input id="l-nama" type="text" autocomplete="name" placeholder="mis. Rina"></label>
     <p class="hint" id="l-err" style="color:var(--bad)"></p>
-    <div class="row"><button class="btn primary" style="flex:1" id="l-masuk">Masuk</button><button type="button" class="btn" id="l-daftar">Daftar akun baru</button></div>
+    <div class="row"><button class="btn primary" style="flex:1" id="l-masuk">Masuk</button><button type="button" class="btn" id="l-daftar">Daftar toko baru</button></div>
+  </form>
+  <form class="panel" id="kasirForm" style="margin-top:12px">
+    <span class="sec">Kasir</span>
+    <p class="hint">Masukkan kode kasir dari owner. Tidak perlu email.</p>
+    <label>Kode kasir<input id="l-kode" type="text" autocomplete="off" maxlength="9" style="text-transform:uppercase;letter-spacing:2px" placeholder="XXXX-XXXX"></label>
+    <p class="hint" id="l-kerr" style="color:var(--bad)"></p>
+    <div class="row"><button class="btn primary" style="flex:1" id="l-kasir">Masuk sebagai kasir</button></div>
   </form>
 </div>
 <div id="tunggu" hidden style="min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:16px">
@@ -331,11 +336,11 @@ dialog form{display:flex;flex-direction:column;gap:12px}
     </div>
     <div class="panel oo" id="panelKasir" hidden>
       <h2>Akun kasir</h2>
-      <p class="hint">Kasir memakai email sendiri. Di layar masuk, kasir mengisi Kode toko di bawah ini lalu Daftar; permintaannya muncul di sini untuk disetujui. Kasir hanya bisa berjualan dan melihat stok (tanpa HPP), dan wajib mengisi nama pemesan. Penjualan kasir masuk laporan dan memotong stok saat aplikasi owner ini terbuka dan online.</p>
-      <div class="row" style="align-items:center"><span>Kode toko: <b class="num" id="kodeToko" style="font-size:20px;letter-spacing:2px">belum dibuat</b></span><button type="button" class="btn" data-act="buatKode">Buat kode baru</button></div>
+      <p class="hint">Kasir tidak memakai email. Buat satu kode untuk tiap kasir, lalu kasir memasukkannya di layar masuk, bagian Kasir. Kode hanya bisa dipakai sekali, di satu HP. Kasir hanya bisa berjualan dan melihat stok (tanpa HPP), dan wajib mengisi nama pemesan. Penjualan kasir masuk laporan dan memotong stok saat aplikasi owner ini terbuka dan online.</p>
+      <div class="row"><label style="flex:2 1 180px">Nama kasir<input id="kk-nama" type="text" placeholder="mis. Rina" autocomplete="off"></label><button type="button" class="btn primary" data-act="buatKodeKasir">Buat kode kasir</button></div>
       <p class="hint" id="jualTunda"></p>
-      <span class="sec">Menunggu persetujuan</span>
-      <div class="stack" id="mintaBox" style="gap:8px"></div>
+      <span class="sec">Kode kasir</span>
+      <div class="stack" id="kodeBox" style="gap:8px"></div>
       <span class="sec">Kasir terdaftar</span>
       <div class="stack" id="anggotaBox" style="gap:8px"></div>
     </div>
@@ -481,7 +486,7 @@ dialog form{display:flex;flex-direction:column;gap:12px}
 <script>
 const CH={offline:'Langsung',gofood:'GoFood',grabfood:'GrabFood',shopeefood:'ShopeeFood'};
 const DEF={toko:'Toko Saya',modalAwal:0,modalAuto:true,pajak:0,margin:40,bulat:500,kertas:58,kaki:'Terima kasih',tema:{preset:'bawaan',lapisan:70},logoStruk:true,watermark:false,kemasan:[],kemasKat:{makanan:[],minuman:[]},ch:{gofood:{fee:20,markup:0,auto:true},grabfood:{fee:20,markup:0,auto:true},shopeefood:{fee:20,markup:0,auto:true}}};
-const S={gambar:'',logo:'',products:{},menus:{},pesanan:{},integrasi:{},purchases:{},sales:{},biaya:{},stokLog:{},kasir:{},jual:{},anggota:{},permintaan:{},stok:{},publik:{},settings:JSON.parse(JSON.stringify(DEF))};
+const S={gambar:'',logo:'',products:{},menus:{},pesanan:{},integrasi:{},purchases:{},sales:{},biaya:{},stokLog:{},kasir:{},jual:{},anggota:{},kodeKasir:{},stok:{},publik:{},settings:JSON.parse(JSON.stringify(DEF))};
 const LS='kasir-gudang-v1';
 let cara='tunai',qrisSiap=false;
 let PERAN='owner',SAYA={uid:'',nama:'',email:''},pilihM=null,olId=null,olRows=[],prId=null;
@@ -810,10 +815,10 @@ function renderPeran(){
     $('#tilesSaya').innerHTML=tile('Kasir',esc(SAYA.nama||SAYA.email))+tile('Transaksi',js.length,'hari ini')+tile('Total kotor',rp(sm(()=>1)))+tile('Tunai',rp(sm(j=>j.channel==='offline'&&j.cara!=='qris')))+tile('QRIS',rp(sm(j=>j.channel==='offline'&&j.cara==='qris')))+tile('Aplikasi',rp(sm(j=>j.channel!=='offline')));
     $('#tSaya').innerHTML=js.length?js.map(([id,j])=>`<tr><td>${waktu(j.ts)}</td><td>${CH[j.channel]||j.channel}</td><td>${esc(j.pemesan||'')}</td><td class="wrapc">${esc((j.items||[]).map(i=>nf(i.qty)+'× '+i.name).join(', '))}</td><td class="r">${rp(tagihS(j))}</td><td>${j.channel==='offline'?(j.cara==='qris'?'QRIS':'Tunai'):'Aplikasi'}</td><td><span class="pill ${j.diproses?'ok':'low'}">${j.diproses?'Tercatat':'Menunggu owner'}</span></td><td><button class="btn sm" data-act="strukJual" data-id="${id}">Struk</button></td></tr>`).join(''):'<tr><td colspan="8"><p class="empty">Belum ada penjualan hari ini.</p></td></tr>';return}
   $('#panelKasir').hidden=!(db&&db.rootDoc);if(!(db&&db.rootDoc))return;
-  $('#kodeToko').textContent=S.settings.kodeToko||'belum dibuat';
   const tunda=Object.values(S.jual).filter(j=>!j.diproses).length;$('#jualTunda').textContent=tunda?tunda+' penjualan kasir menunggu diproses (otomatis saat aplikasi ini online).':'';
-  const mt=Object.entries(S.permintaan);$('#mintaBox').innerHTML=mt.length?mt.map(([id,m])=>`<div class="row" style="justify-content:space-between;align-items:center"><span><b>${esc(m.nama||'')}</b> · ${esc(m.email||'')}</span><span class="row"><button type="button" class="btn sm primary" data-act="setujuKasir" data-id="${id}">Setujui</button><button type="button" class="btn sm danger" data-act="tolakKasir" data-id="${id}" data-confirm="1">Tolak</button></span></div>`).join(''):'<p class="hint">Tidak ada.</p>';
-  const ag=Object.entries(S.anggota);$('#anggotaBox').innerHTML=ag.length?ag.map(([id,a])=>`<div class="row" style="justify-content:space-between;align-items:center"><span><b>${esc(a.nama||'')}</b> · ${esc(a.email||'')} <span class="pill ${a.aktif?'ok':'out'}">${a.aktif?'Aktif':'Nonaktif'}</span></span><span class="row"><button type="button" class="btn sm" data-act="aktifKasir" data-id="${id}">${a.aktif?'Nonaktifkan':'Aktifkan'}</button><button type="button" class="btn sm danger" data-act="hapusKasir" data-id="${id}" data-confirm="1">Hapus</button></span></div>`).join(''):'<p class="hint">Belum ada kasir.</p>';
+  const dk=new Set(Object.values(S.anggota).map(a=>a.kode)),kk=Object.entries(S.kodeKasir).sort((a,b)=>b[1].ts-a[1].ts),fk=k=>k.slice(0,4)+'-'+k.slice(4);
+  $('#kodeBox').innerHTML=kk.length?kk.map(([k,x])=>`<div class="row" style="justify-content:space-between;align-items:center"><span><b>${esc(x.nama)}</b> · <b class="num" style="font-size:18px;letter-spacing:2px">${fk(k)}</b> <span class="pill ${dk.has(k)?'ok':'low'}">${dk.has(k)?'Sudah dipakai':'Belum dipakai'}</span></span><button type="button" class="btn sm danger" data-act="hapusKodeKasir" data-id="${k}" data-confirm="1">Hapus kode</button></div>`).join(''):'<p class="hint">Belum ada kode.</p>';
+  const ag=Object.entries(S.anggota);$('#anggotaBox').innerHTML=ag.length?ag.map(([id,a])=>`<div class="row" style="justify-content:space-between;align-items:center"><span><b>${esc(a.nama||'')}</b>${a.ts?' · sejak '+waktu(a.ts):''} <span class="pill ${a.aktif?'ok':'out'}">${a.aktif?'Aktif':'Nonaktif'}</span></span><span class="row"><button type="button" class="btn sm" data-act="aktifKasir" data-id="${id}">${a.aktif?'Nonaktifkan':'Aktifkan'}</button><button type="button" class="btn sm danger" data-act="hapusKasir" data-id="${id}" data-confirm="1">Hapus</button></span></div>`).join(''):'<p class="hint">Belum ada kasir.</p>';
   jadwalPublik()}
 // ---------- peran kasir: kasir menulis ke jual/, owner memprosesnya jadi sales/ ----------
 function jualKasir(n,ch){const pm=$('#pemesan').value.trim();if(!pm){toast('Isi nama pemesan dulu');$('#pemesan').focus();return}
@@ -1039,10 +1044,10 @@ const A={
       toast(Math.abs(f-k.harus)<1?'Kasir ditutup · uang pas':'Kasir ditutup · selisih '+rp(f-k.harus))})},
   bukaKas(){const tgl=hariIni(),d=S.kasir[tgl];if(!d)return;const x={...d};delete x.tutup;run(async()=>{await put('kasir',tgl,x);$('#kk-fisik').value='';$('#kk-note').value='';toast('Kasir hari ini dibuka lagi')})},
   strukJual(id){if(S.jual[id])bukaStruk(S.jual[id])},
-  buatKode(){if(!db||!db.rootDoc)return;const H='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';let k='';for(let i=0;i<6;i++)k+=H[Math.floor(Math.random()*H.length)];const lama=S.settings.kodeToko;
-    run(async()=>{await db.rootDoc('kode/'+k).set({toko:SAYA.uid,ts:Date.now()});if(lama)await db.rootDoc('kode/'+lama).delete();S.settings={...S.settings,kodeToko:k};await db.doc('settings/main').set(S.settings);toast('Kode toko baru: '+k+'. Kode lama tidak berlaku lagi.')})},
-  setujuKasir(id){const m=S.permintaan[id];if(!m)return;run(async()=>{await put('anggota',id,{nama:m.nama||m.email||'Kasir',email:m.email||'',aktif:true,ts:Date.now()});await del('permintaan',id);jadwalPublik();toast('Kasir '+(m.nama||'')+' disetujui')})},
-  tolakKasir(id){if(!S.permintaan[id])return;run(async()=>{await del('permintaan',id);toast('Permintaan ditolak')})},
+  buatKodeKasir(){if(!db||!db.rootDoc)return;const nama=$('#kk-nama').value.trim();if(!nama){toast('Isi nama kasir dulu');return}
+    const H='ABCDEFGHJKLMNPQRSTUVWXYZ23456789',a=new Uint32Array(8);crypto.getRandomValues(a);const k=[...a].map(x=>H[x%32]).join('');
+    run(async()=>{await db.rootDoc('undangan/'+k).set({toko:SAYA.uid,nama,ts:Date.now(),dipakai:null});await put('kodeKasir',k,{nama,ts:Date.now()});$('#kk-nama').value='';toast('Kode untuk '+nama+': '+k.slice(0,4)+'-'+k.slice(4))})},
+  hapusKodeKasir(k){if(!S.kodeKasir[k])return;run(async()=>{await db.rootDoc('undangan/'+k).delete();await del('kodeKasir',k);toast('Kode dihapus. Kasir yang sudah masuk tetap terdaftar; hapus di daftar kasir bila perlu.')})},
   aktifKasir(id){const a=S.anggota[id];if(!a)return;run(async()=>{await put('anggota',id,{...a,aktif:!a.aktif});toast(a.aktif?'Kasir dinonaktifkan':'Kasir diaktifkan')})},
   hapusKasir(id){if(!S.anggota[id])return;run(async()=>{await del('anggota',id);toast('Kasir dihapus')})},
   hapusContoh(){run(async()=>{for(const col of ['sales','purchases','menus','products','pesanan','biaya','stokLog'])for(const id of Object.keys(S[col]))if(S[col][id].contoh||S[col][id].uji)await del(col,id);cart={};toast('Data contoh dihapus')})}
@@ -1241,13 +1246,13 @@ function boot(){
     $('#l-err').textContent='';(daftar?auth.createUserWithEmailAndPassword(em,pw):auth.signInWithEmailAndPassword(em,pw)).catch(e=>{$('#l-err').textContent=AERR[e.code]||'Gagal masuk ('+(e.code||'tidak diketahui')+').'})};
   $('#loginForm').addEventListener('submit',e=>{e.preventDefault();masuk(false)});$('#l-daftar').addEventListener('click',()=>masuk(true));
   let unsub=[];
-  const KOLO=['products','menus','purchases','sales','pesanan','biaya','stokLog','kasir','jual','anggota','permintaan','stok','publik'];
+  const KOLO=['products','menus','purchases','sales','pesanan','biaya','stokLog','kasir','jual','anggota','kodeKasir','stok','publik'];
   const kosong=()=>{KOLO.concat(['integrasi']).forEach(c=>S[c]={});S.gambar='';S.logo='';S.settings=mergeSet({})};
   const buatDb=(uid,base)=>({doc:p=>{const r=fs.doc(base+p);return{set:d=>{r.set(d).catch(gagal);return Promise.resolve()},delete:()=>{r.delete().catch(gagal);return Promise.resolve()},onSnapshot:(a,b)=>r.onSnapshot(a,b)}},collection:c=>fs.collection(base+c),
     rootDoc:p=>{const r=fs.doc(p);return{set:d=>{r.set(d).catch(gagal);return Promise.resolve()},delete:()=>{r.delete().catch(gagal);return Promise.resolve()}}},
     klaim:id=>{if(!navigator.onLine)return Promise.resolve(false);const r=fs.doc(base+'jual/'+id);return fs.runTransaction(async tx=>{const d=await tx.get(r);if(!d.exists||d.data().diproses)return false;tx.update(r,{diproses:true,tsProses:Date.now()});return true}).catch(()=>false)}});
   const onErr=e=>{$('#sync').textContent=e&&e.code==='permission-denied'?'Akses data ditolak: aturan Firestore belum dipasang atau akses kasir dicabut.':'Sambungan data terputus. Muat ulang halaman.'};
-  const langgan=(cols,setelah)=>cols.forEach(col=>{const q=(col==='products'||col==='menus'||col==='stok'||col==='publik'||col==='anggota'||col==='permintaan')?db.collection(col).limit(2000):db.collection(col).orderBy('ts','desc').limit(1000);
+  const langgan=(cols,setelah)=>cols.forEach(col=>{const q=(col==='products'||col==='menus'||col==='stok'||col==='publik'||col==='anggota'||col==='kodeKasir')?db.collection(col).limit(2000):db.collection(col).orderBy('ts','desc').limit(1000);
     unsub.push(q.onSnapshot(s=>{if(busy&&col!=='jual')return;const o={};s.docs.forEach(x=>o[x.id]=x.data());S[col]=o;if(setelah)setelah(col);render()},onErr))});
   const tampil=w=>{$('#login').hidden=w!=='login';$('#tunggu').hidden=w!=='tunggu';$('#app').hidden=w!=='app'};
   function mulaiOwner(u){PERAN='owner';document.body.classList.remove('kasir');const base='toko/'+u.uid+'/';db=buatDb(u.uid,base);
@@ -1259,21 +1264,29 @@ function boot(){
     ['gambar','logo'].forEach(k=>unsub.push(db.doc('settings/'+k).onSnapshot(s=>{S[k]=s.exists?(s.data().data||''):'';render()},onErr)));
     render()}
   function mulaiKasir(u,ak){simpanRahasia=null;const base='toko/'+ak.toko+'/';db=buatDb(u.uid,base);db.rootDoc=null;db.klaim=null;mode='cloud';let jalan=false;
-    $('#t-email').textContent=u.email;tampil('tunggu');$('#t-info').textContent='Menunggu persetujuan owner toko. Minta owner membuka Pengaturan, bagian Akun kasir, lalu tekan Setujui.';
+    $('#t-email').textContent='Kasir '+(ak.nama||'');tampil('tunggu');$('#t-info').textContent='Memeriksa akses kasir…';
     unsub.push(fs.doc(base+'anggota/'+u.uid).onSnapshot(d=>{const a=d.exists?d.data():null;
       if(a&&a.aktif){SAYA.nama=a.nama||u.email;if(jalan)return;jalan=true;PERAN='kasir';document.body.classList.add('kasir');tab('kasir');tampil('app');
         langgan(['stok','publik','pesanan','jual'],()=>turunanKasir());render()}
-      else{if(jalan){location.reload();return}$('#t-info').textContent=a?'Akses kasir Anda sedang dinonaktifkan oleh owner.':'Menunggu persetujuan owner toko. Minta owner membuka Pengaturan, bagian Akun kasir, lalu tekan Setujui.'}},e=>{$('#t-info').textContent='Belum bisa memeriksa status ('+(e&&e.code||'galat')+'). Periksa internet.'}))}
+      else{if(jalan){location.reload();return}$('#t-info').textContent=a?'Akses kasir Anda sedang dinonaktifkan oleh owner.':'Akun kasir ini sudah dihapus owner. Keluar, lalu masukkan kode kasir baru.'}},e=>{$('#t-info').textContent='Belum bisa memeriksa status ('+(e&&e.code||'galat')+'). Periksa internet.'}))}
+  let kodeTunda='';
+  $('#kasirForm').addEventListener('submit',e=>{e.preventDefault();const k=$('#l-kode').value.toUpperCase().replace(/[^A-Z0-9]/g,'');
+    if(k.length!==8){$('#l-kerr').textContent='Kode kasir terdiri dari 8 huruf/angka.';return}$('#l-kerr').textContent='';kodeTunda=k;
+    auth.signInAnonymously().catch(x=>{kodeTunda='';$('#l-kerr').textContent=x&&x.code==='auth/operation-not-allowed'?'Login kasir belum diaktifkan owner (Firebase: Anonymous).':'Gagal masuk ('+(x&&x.code||'tidak diketahui')+').'})});
   auth.onAuthStateChanged(async u=>{unsub.forEach(f=>f());unsub=[];cart={};
     if(!u){db=null;simpanRahasia=null;mode='memuat';PERAN='owner';document.body.classList.remove('kasir');kosong();terapkanTema(null,'');tampil('login');return}
-    SAYA={uid:u.uid,nama:'',email:u.email};kosong();$('#akun').textContent=u.email;$('#l-pass').value='';
-    const kode=$('#l-kode').value.trim().toUpperCase(),nama=$('#l-nama').value.trim();let ak=null;
-    try{const d=await fs.doc('akun/'+u.uid).get();ak=d.exists?d.data():null}catch(e){}
-    if(kode){try{const k=await fs.doc('kode/'+kode).get();if(!k.exists){$('#l-err').textContent='Kode toko '+kode+' tidak ditemukan. Tanyakan kode terbaru ke owner.';auth.signOut();return}
-        const t=k.data().toko;if(t!==u.uid){ak={toko:t,nama:nama||u.email,email:u.email,ts:Date.now()};fs.doc('akun/'+u.uid).set(ak).catch(gagal);fs.doc('toko/'+t+'/permintaan/'+u.uid).set({nama:ak.nama,email:u.email,ts:Date.now()}).catch(gagal)}}
-      catch(e){$('#l-err').textContent='Gagal memeriksa kode toko. Periksa internet.';auth.signOut();return}
-      $('#l-kode').value=''}
-    if(ak&&ak.toko&&ak.toko!==u.uid)mulaiKasir(u,ak);else mulaiOwner(u)});
+    SAYA={uid:u.uid,nama:'',email:u.email||''};kosong();$('#l-pass').value='';
+    if(!u.isAnonymous){$('#akun').textContent=u.email;mulaiOwner(u);return}
+    let ak=null;try{const d=await fs.doc('akun/'+u.uid).get();ak=d.exists?d.data():null}catch(e){}
+    const k=kodeTunda;kodeTunda='';
+    if(!ak&&k){try{const ref=fs.doc('undangan/'+k),d=await ref.get();
+        if(!d.exists){$('#l-kerr').textContent='Kode '+k.slice(0,4)+'-'+k.slice(4)+' tidak ditemukan. Minta kode baru ke owner.';auth.signOut();return}
+        const x=d.data();if(x.dipakai&&x.dipakai!==u.uid){$('#l-kerr').textContent='Kode ini sudah dipakai di HP lain. Minta kode baru ke owner.';auth.signOut();return}
+        const bt=fs.batch();bt.update(ref,{dipakai:u.uid});bt.set(fs.doc('toko/'+x.toko+'/anggota/'+u.uid),{nama:x.nama,kode:k,aktif:true,ts:Date.now()});await bt.commit();
+        ak={toko:x.toko,nama:x.nama,ts:Date.now()};await fs.doc('akun/'+u.uid).set(ak)}
+      catch(e){$('#l-kerr').textContent=e&&e.code==='permission-denied'?'Kode ditolak server. Minta kode baru ke owner.':'Gagal memeriksa kode. Pastikan internet menyala.';auth.signOut();return}}
+    if(!ak){$('#l-kerr').textContent='Sesi kasir tidak dikenal. Masukkan kode kasir lagi.';auth.signOut();return}
+    $('#l-kode').value='';$('#akun').textContent='Kasir '+ak.nama;mulaiKasir(u,ak)});
   $('#t-keluar').addEventListener('click',()=>auth.signOut());
   window.addEventListener('online',()=>{if(PERAN==='owner'&&db)prosesJualKasir()});
   $('#imporFile').addEventListener('change',e=>{const f=e.target.files[0];e.target.value='';if(!f)return;const rd=new FileReader();
