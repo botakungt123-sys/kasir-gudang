@@ -130,6 +130,7 @@ dialog form{display:flex;flex-direction:column;gap:12px}
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 </head>
 <body>
+<script>window.RULES_TPL="rules_version = '2';\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    function masuk() { return request.auth != null; }\n    // Admin = akun pemilik aplikasi; toko lain hanya bisa memakai aplikasi bila punya izin dari link pendaftaran.\n    function admin() { return masuk() && request.auth.uid == '__ADMIN_UID__'; }\n    function terdaftar(t) { return t == '__ADMIN_UID__' || exists(/databases/$(database)/documents/izin/$(t)); }\n    function owner(t) { return masuk() && request.auth.uid == t && terdaftar(t); }\n    function anggota(t) {\n      return masuk() && exists(/databases/$(database)/documents/toko/$(t)/anggota/$(request.auth.uid))\n        && get(/databases/$(database)/documents/toko/$(t)/anggota/$(request.auth.uid)).data.aktif == true;\n    }\n    // Owner: akses penuh ke data tokonya sendiri.\n    match /toko/{t}/{document=**} {\n      allow read, write: if owner(t);\n    }\n    // Kasir aktif: stok tanpa HPP, menu berharga jadi, pesanan masuk, dan penjualan kasir.\n    match /toko/{t}/stok/{id} { allow read: if anggota(t); }\n    match /toko/{t}/publik/{id} { allow read: if anggota(t); }\n    match /toko/{t}/pesanan/{id} {\n      allow read: if anggota(t);\n      allow update: if anggota(t) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'saleId', 'tsProses']);\n    }\n    match /toko/{t}/jual/{id} {\n      allow read: if anggota(t);\n      allow create: if anggota(t)\n        && request.resource.data.kasirUid == request.auth.uid\n        && request.resource.data.pemesan is string && request.resource.data.pemesan.size() > 0\n        && request.resource.data.keys().hasAll(['ts', 'channel', 'items', 'sub'])\n        && !request.resource.data.keys().hasAny(['hpp', 'net', 'fee', 'diproses', 'stokOk', 'batal', 'mintaBatal']);\n      // Kasir hanya boleh mengajukan pembatalan penjualannya sendiri; owner yang memutuskan.\n      allow update: if anggota(t) && resource.data.kasirUid == request.auth.uid\n        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['mintaBatal']);\n    }\n    // Tanda menu habis hari ini: owner dan kasir aktif.\n    match /toko/{t}/habis/{id} { allow read, write: if anggota(t); }\n    match /toko/{t}/anggota/{uid} {\n      allow read: if masuk() && request.auth.uid == uid;\n      // Kasir mendaftarkan diri hanya dengan kode undangan sekali pakai yang dibuat owner toko ini.\n      allow create: if masuk() && request.auth.uid == uid\n        && request.resource.data.keys().hasOnly(['nama', 'kode', 'aktif', 'ts'])\n        && request.resource.data.aktif == true\n        && request.resource.data.kode is string\n        && get(/databases/$(database)/documents/undangan/$(request.resource.data.kode)).data.toko == t\n        && get(/databases/$(database)/documents/undangan/$(request.resource.data.kode)).data.dipakai == null\n        && getAfter(/databases/$(database)/documents/undangan/$(request.resource.data.kode)).data.dipakai == request.auth.uid\n        && request.resource.data.nama == get(/databases/$(database)/documents/undangan/$(request.resource.data.kode)).data.nama;\n    }\n    // Akun kasir mencatat toko yang diikuti; hanya pemilik akun yang bisa membaca/menulis.\n    match /akun/{uid} { allow read, write: if masuk() && request.auth.uid == uid; }\n    // Kode kasir sekali pakai: dibuat owner; kasir hanya bisa menandainya terpakai bersamaan dengan mendaftar.\n    match /undangan/{k} {\n      allow get: if masuk();\n      allow create: if owner(request.auth.uid) && request.resource.data.toko == request.auth.uid && request.resource.data.dipakai == null;\n      allow delete: if masuk() && resource.data.toko == request.auth.uid;\n      allow update: if masuk() && (resource.data.toko == request.auth.uid\n        || (resource.data.dipakai == null\n            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['dipakai'])\n            && request.resource.data.dipakai == request.auth.uid\n            && existsAfter(/databases/$(database)/documents/toko/$(resource.data.toko)/anggota/$(request.auth.uid))));\n    }\n    // Link pendaftaran toko: dibuat admin, sekali pakai.\n    match /undanganToko/{k} {\n      allow get: if true;\n      allow list, create, delete: if admin();\n      allow update: if admin() || (masuk() && resource.data.dipakai == null\n        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['dipakai', 'email'])\n        && request.resource.data.dipakai == request.auth.uid\n        && existsAfter(/databases/$(database)/documents/izin/$(request.auth.uid)));\n    }\n    match /izin/{uid} {\n      allow get: if masuk() && (request.auth.uid == uid || admin());\n      allow list, delete: if admin();\n      allow create: if masuk() && request.auth.uid == uid && request.auth.token.firebase.sign_in_provider != 'anonymous'\n        && request.resource.data.token is string\n        && get(/databases/$(database)/documents/undanganToko/$(request.resource.data.token)).data.dipakai == null\n        && getAfter(/databases/$(database)/documents/undanganToko/$(request.resource.data.token)).data.dipakai == request.auth.uid;\n    }\n    // Kunci rahasia API per toko: tulis-saja, tidak bisa dibaca dari aplikasi.\n    match /kunci/{uid}/platform/{plat} {\n      allow create, update, delete: if owner(uid);\n      allow read: if false;\n    }\n  }\n}\n";</script>
 <div id="login">
   <form class="panel" id="loginForm">
     <h1>Kasir Gudang</h1>
@@ -137,7 +138,8 @@ dialog form{display:flex;flex-direction:column;gap:12px}
     <label>Email<input id="l-email" type="email" autocomplete="username" required></label>
     <label>Kata sandi<input id="l-pass" type="password" autocomplete="current-password" minlength="6" required></label>
     <p class="hint" id="l-err" style="color:var(--bad)"></p>
-    <div class="row"><button class="btn primary" style="flex:1" id="l-masuk">Masuk</button><button type="button" class="btn" id="l-daftar">Daftar toko baru</button></div>
+    <div class="row"><button class="btn primary" style="flex:1" id="l-masuk">Masuk</button><button type="button" class="btn" id="l-daftar" hidden>Daftar toko baru</button></div>
+    <p class="hint" id="l-undangan" hidden style="color:var(--accent)">Link pendaftaran toko baru terdeteksi. Isi email dan kata sandi baru, lalu tekan Daftar toko baru.</p>
   </form>
   <form class="panel" id="kasirForm" style="margin-top:12px">
     <span class="sec">Kasir</span>
@@ -348,6 +350,15 @@ dialog form{display:flex;flex-direction:column;gap:12px}
       </div>
       <p class="hint">Pajak ditambahkan ke tagihan pelanggan untuk penjualan langsung dan tidak dihitung sebagai pendapatan. Isi 0 jika tidak memungut.</p>
     </div>
+    <div class="panel oo" id="panelAdmin" hidden>
+      <h2>Admin: pendaftaran toko</h2>
+      <p class="hint">Hanya akun admin yang melihat bagian ini. Toko baru hanya bisa mendaftar lewat link dari sini; tiap link sekali pakai. Mencabut izin membuat toko itu tidak bisa membuka datanya lagi.</p>
+      <div class="row"><label style="flex:2 1 180px">Untuk siapa (catatan)<input id="ad-label" type="text" placeholder="mis. Warung Bu Sri" autocomplete="off"></label><button type="button" class="btn primary" data-act="buatLinkToko">Buat link pendaftaran</button></div>
+      <span class="sec">Link pendaftaran</span>
+      <div class="stack" id="linkBox" style="gap:8px"></div>
+      <span class="sec">Toko terdaftar</span>
+      <div class="stack" id="izinBox" style="gap:8px"></div>
+    </div>
     <div class="panel oo" id="panelKasir" hidden>
       <h2>Akun kasir</h2>
       <p class="hint">Kasir tidak memakai email. Buat satu kode untuk tiap kasir, lalu kasir memasukkannya di layar masuk, bagian Kasir. Kode hanya bisa dipakai sekali, di satu HP. Kasir hanya bisa berjualan dan melihat stok (tanpa HPP), dan wajib mengisi nama pemesan. Penjualan kasir masuk laporan dan memotong stok saat aplikasi owner ini terbuka dan online.</p>
@@ -396,6 +407,8 @@ dialog form{display:flex;flex-direction:column;gap:12px}
       <h2>Akun dan cadangan data</h2>
       <p class="hint">Masuk sebagai <b id="akun"></b>. Ekspor menyimpan semua data ke satu file JSON. Impor menambahkan isi file ke data sekarang; data dengan kode yang sama ditimpa.</p>
       <div class="row"><button type="button" class="btn oo" data-act="ekspor">Ekspor data</button><label class="btn oo" style="flex:0 0 auto;flex-direction:row;color:var(--ink);font-size:13px;cursor:pointer">Impor data<input id="imporFile" type="file" accept="application/json,.json" hidden></label><button type="button" class="btn danger" data-act="keluar" data-confirm="1">Keluar</button></div>
+      <p class="hint oo">ID akun: <b class="num" id="adUid"></b>. Khusus pemilik aplikasi (admin): tombol di bawah menyalin aturan keamanan Firebase yang sudah berisi ID akun ini. Tempel di Firebase Console, Firestore, Rules, lalu Publish.</p>
+      <div class="row oo"><button type="button" class="btn" data-act="salinAturan">Salin aturan Firebase</button></div>
     </div>
     <div class="panel oo">
       <h2>Kemasan per pesanan</h2>
@@ -505,7 +518,7 @@ dialog form{display:flex;flex-direction:column;gap:12px}
 <script>
 const CH={offline:'Langsung',gofood:'GoFood',grabfood:'GrabFood',shopeefood:'ShopeeFood'};
 const DEF={toko:'Toko Saya',modalAwal:0,modalAuto:true,pajak:0,margin:40,bulat:500,kertas:58,kaki:'Terima kasih',tema:{preset:'bawaan',lapisan:70},logoStruk:true,watermark:false,kemasan:[],kemasKat:{makanan:[],minuman:[]},ch:{gofood:{fee:20,markup:0,auto:true},grabfood:{fee:20,markup:0,auto:true},shopeefood:{fee:20,markup:0,auto:true}}};
-const S={gambar:'',logo:'',products:{},menus:{},pesanan:{},integrasi:{},purchases:{},sales:{},biaya:{},stokLog:{},kasir:{},jual:{},anggota:{},kodeKasir:{},rekap:{},arsip:{},habis:{},stok:{},publik:{},settings:JSON.parse(JSON.stringify(DEF))};
+const S={gambar:'',logo:'',products:{},menus:{},pesanan:{},integrasi:{},purchases:{},sales:{},biaya:{},stokLog:{},kasir:{},jual:{},anggota:{},kodeKasir:{},rekap:{},arsip:{},habis:{},undToko:{},izin:{},stok:{},publik:{},settings:JSON.parse(JSON.stringify(DEF))};
 const LS='kasir-gudang-v1';
 let cara='tunai',qrisSiap=false;
 let katPilih='semua',modeHabis=false,PERAN='owner',SAYA={uid:'',nama:'',email:''},pilihM=null,olId=null,olRows=[],prId=null;
@@ -880,7 +893,16 @@ function kasHari(tgl){const a=new Date(tgl+'T00:00:00').getTime(),b=a+864e5,inR=
   const bT=Object.values(S.biaya).filter(x=>inR(x.ts)&&(x.cara||'tunai')==='tunai').reduce((x,y)=>x+num(y.jumlah),0);
   const pT=Object.values(S.purchases).filter(p=>p.bayar!=='kredit'&&(p.cara||'tunai')==='tunai'&&inR(p.lunasTs||p.ts)).reduce((x,p)=>x+num(p.total),0);
   const modal=num(d.modal),keluar=potong?bT+pT:0;return{d,modal,tunai,qris,app,bT,pT,potong,keluar,harus:modal+tunai-keluar,n:jl.length,nT:lg.filter(s=>s.cara!=='qris').length}}
-function renderPeran(){
+let ADMIN=false;const RULES_TPL=window.RULES_TPL||'';
+const linkDaftar=k=>location.origin+location.pathname+'#daftar='+k;
+function renderAdmin(){if($('#adUid'))$('#adUid').textContent=SAYA.uid;$('#panelAdmin').hidden=!ADMIN;if(!ADMIN)return;
+  const em={};Object.entries(S.izin).forEach(([u,x])=>em[x.token]=x.email);
+  const lk=Object.entries(S.undToko).sort((a,b)=>b[1].ts-a[1].ts);
+  $('#linkBox').innerHTML=lk.length?lk.map(([k,x])=>`<div class="row" style="justify-content:space-between;align-items:center"><span><b>${esc(x.label||'Tanpa catatan')}</b> <span class="pill ${x.dipakai?'ok':'low'}">${x.dipakai?'Dipakai '+esc(em[k]||''):'Belum dipakai'}</span><br><small class="num" style="word-break:break-all">${esc(linkDaftar(k))}</small></span><span class="row">${x.dipakai?'':`<button type="button" class="btn sm" data-act="salinLink" data-id="${k}">Salin link</button>`}<button type="button" class="btn sm danger" data-act="hapusLink" data-id="${k}" data-confirm="1">Hapus</button></span></div>`).join(''):'<p class="hint">Belum ada link.</p>';
+  const iz=Object.entries(S.izin).sort((a,b)=>b[1].ts-a[1].ts);
+  $('#izinBox').innerHTML=iz.length?iz.map(([u,x])=>`<div class="row" style="justify-content:space-between;align-items:center"><span><b>${esc(x.email||u)}</b> · ${esc((S.undToko[x.token]||{}).label||'')} · sejak ${waktu(x.ts)}</span><button type="button" class="btn sm danger" data-act="cabutToko" data-id="${u}" data-confirm="1">Cabut izin</button></div>`).join(''):'<p class="hint">Belum ada toko lain.</p>'}
+const salin=t=>{try{navigator.clipboard.writeText(t).then(()=>toast('Tersalin'),()=>toast('Gagal menyalin: '+t))}catch(e){toast(t)}};
+function renderPeran(){renderAdmin();
   $('#pemesan').placeholder=PERAN==='kasir'?'Wajib diisi, misalnya Budi / meja 3':'Opsional, misalnya Budi / meja 3';
   if(PERAN==='kasir'){const h0=new Date().setHours(0,0,0,0),js=Object.entries(S.jual).filter(([,j])=>j.kasirUid===SAYA.uid&&j.ts>=h0).sort((a,b)=>b[1].ts-a[1].ts),sm=f=>js.filter(([,j])=>!j.batal&&f(j)).reduce((a,[,j])=>a+tagihS(j),0);
     $('#tilesSaya').innerHTML=tile('Kasir',esc(SAYA.nama||SAYA.email))+tile('Transaksi',js.filter(([,j])=>!j.batal).length,'hari ini')+tile('Total kotor',rp(sm(()=>1)))+tile('Tunai',rp(sm(j=>j.channel==='offline'&&j.cara!=='qris')))+tile('QRIS',rp(sm(j=>j.channel==='offline'&&j.cara==='qris')))+tile('Aplikasi',rp(sm(j=>j.channel!=='offline')));
@@ -1132,6 +1154,12 @@ const A={
       await ubahDoc('jual',id,{batal:{ts:Date.now(),alasan:(j.mintaBatal||{}).alasan||''},mintaBatal:null,diproses:true,stokOk:true});sinkPublik();toast('Penjualan dibatalkan dan tercatat'+(s?', stok dikembalikan':''))})},
   tolakBatal(id){if(!S.jual[id])return;run(async()=>{await ubahDoc('jual',id,{mintaBatal:null,tolakBatal:{ts:Date.now()}});toast('Permintaan batal ditolak')})},
   kat(g){katPilih=g;render()},
+  buatLinkToko(){if(!ADMIN)return;const H='abcdefghijkmnpqrstuvwxyz23456789',a=new Uint32Array(20);crypto.getRandomValues(a);const k=[...a].map(x=>H[x%32]).join(''),label=$('#ad-label').value.trim();
+    run(async()=>{await db.rootDoc('undanganToko/'+k).set({label,ts:Date.now(),dipakai:null,email:null});S.undToko={...S.undToko,[k]:{label,ts:Date.now(),dipakai:null}};$('#ad-label').value='';salin(linkDaftar(k))})},
+  salinLink(k){salin(linkDaftar(k))},
+  hapusLink(k){run(async()=>{await db.rootDoc('undanganToko/'+k).delete();const o={...S.undToko};delete o[k];S.undToko=o;toast('Link dihapus')})},
+  cabutToko(u){run(async()=>{await db.rootDoc('izin/'+u).delete();const o={...S.izin};delete o[u];S.izin=o;toast('Izin toko dicabut')})},
+  salinAturan(){if(!RULES_TPL){toast('Aturan tidak tersedia');return}salin(RULES_TPL.split('__ADMIN_UID__').join(SAYA.uid))},
   modeHabis(){modeHabis=!modeHabis;render()},
   togHabis(id){const m=S.menus[id];if(!m)return;const hb=habisHari(id);run(async()=>{if(hb)await del('habis',id);else await put('habis',id,{tgl:hariIni(),oleh:SAYA.nama||SAYA.email||'owner',ts:Date.now()});toast(m.name+(hb?' tersedia lagi':' ditandai habis hari ini'))})},
   togSembunyi(id){const m=S.menus[id];if(!m)return;run(async()=>{await put('menus',id,{...m,sembunyi:!m.sembunyi});toast(m.name+(m.sembunyi?' ditampilkan lagi di kasir':' disembunyikan dari kasir'))})},
@@ -1323,14 +1351,20 @@ $('#b-cari').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault
 const CFG={apiKey:"AIzaSyCHBVox72tu4b1tooyIjhD-dW_BMsq02TE",authDomain:"kasir-gudang.firebaseapp.com",projectId:"kasir-gudang",storageBucket:"kasir-gudang.firebasestorage.app",messagingSenderId:"487082562393",appId:"1:487082562393:web:12065ef063a0b7ee967248"};
 const AERR={'auth/invalid-credential':'Email atau kata sandi salah.','auth/wrong-password':'Email atau kata sandi salah.','auth/user-not-found':'Akun belum terdaftar. Tekan Daftar akun toko baru.','auth/email-already-in-use':'Email ini sudah terdaftar. Tekan Masuk.','auth/weak-password':'Kata sandi minimal 6 karakter.','auth/invalid-email':'Format email salah.','auth/network-request-failed':'Tidak ada sambungan internet.','auth/too-many-requests':'Terlalu banyak percobaan. Coba lagi beberapa menit.','auth/operation-not-allowed':'Login email belum diaktifkan di Firebase.'};
 function boot(){
-  tab((location.hash||'#kasir').slice(1));fillSettings();render();
+  const HASH0=location.hash||'';tab((/daftar=/.test(HASH0)?'#kasir':HASH0||'#kasir').slice(1));fillSettings();render();
+  let tokenDaftar='';{const m=HASH0.match(/daftar=([a-z0-9]{20})/);if(m){tokenDaftar=m[1];try{history.replaceState(null,'','#kasir')}catch(e){}$('#l-daftar').hidden=false;$('#l-undangan').hidden=false}}
   if(!window.firebase){$('#l-err').textContent='Gagal memuat. Periksa sambungan internet lalu muat ulang.';return}
   firebase.initializeApp(CFG);const auth=firebase.auth(),fs=firebase.firestore();
   try{fs.settings({ignoreUndefinedProperties:true,merge:true})}catch(e){}
   fs.enablePersistence({synchronizeTabs:true}).catch(()=>{});
   const gagal=e=>toast(e&&e.code==='permission-denied'?'Ditolak server: periksa aturan Firestore.':'Gagal menyimpan ke server.');
-  const masuk=daftar=>{const em=$('#l-email').value.trim(),pw=$('#l-pass').value;if(!em||pw.length<6){$('#l-err').textContent='Isi email dan kata sandi (minimal 6 karakter).';return}
-    $('#l-err').textContent='';(daftar?auth.createUserWithEmailAndPassword(em,pw):auth.signInWithEmailAndPassword(em,pw)).catch(e=>{$('#l-err').textContent=AERR[e.code]||'Gagal masuk ('+(e.code||'tidak diketahui')+').'})};
+  let daftarTunda='';
+  const masuk=async daftar=>{const em=$('#l-email').value.trim(),pw=$('#l-pass').value;if(!em||pw.length<6){$('#l-err').textContent='Isi email dan kata sandi (minimal 6 karakter).';return}
+    $('#l-err').textContent='';
+    if(daftar){if(!tokenDaftar){$('#l-err').textContent='Pendaftaran toko hanya lewat link undangan.';return}
+      try{const d=await fs.doc('undanganToko/'+tokenDaftar).get({source:'server'});if(!d.exists||d.data().dipakai){$('#l-err').textContent='Link pendaftaran tidak berlaku atau sudah dipakai. Minta link baru.';return}}catch(e){$('#l-err').textContent='Gagal memeriksa link. Pastikan internet menyala.';return}
+      daftarTunda=tokenDaftar}
+    (daftar?auth.createUserWithEmailAndPassword(em,pw):auth.signInWithEmailAndPassword(em,pw)).catch(e=>{daftarTunda='';$('#l-err').textContent=AERR[e.code]||'Gagal masuk ('+(e.code||'tidak diketahui')+').'})};
   $('#loginForm').addEventListener('submit',e=>{e.preventDefault();masuk(false)});$('#l-daftar').addEventListener('click',()=>masuk(true));
   let unsub=[];
   const KOLO=['products','menus','purchases','sales','pesanan','biaya','stokLog','kasir','jual','anggota','kodeKasir','stok','publik','rekap','habis'];
@@ -1354,7 +1388,11 @@ function boot(){
   function mulaiOwner(u){PERAN='owner';document.body.classList.remove('kasir');const base='toko/'+u.uid+'/';db=buatDb(u.uid,base);
     simpanRahasia=(k,val)=>{const ref=fs.doc('kunci/'+u.uid+'/platform/'+k);ref.set({rahasia:val,ts:Date.now()}).then(()=>ref.get({source:'server'})).then(()=>toast('PERINGATAN: kunci rahasia masih bisa dibaca dari aplikasi. Aturan Firestore belum benar.'),e=>{if(e&&e.code==='permission-denied')toast('Kunci tersimpan dan terverifikasi tidak bisa dibaca dari aplikasi.');else gagal(e)});return Promise.resolve()};
     unsub.push(db.collection('integrasi').onSnapshot(s=>{const o={};s.docs.forEach(x=>o[x.id]=x.data());S.integrasi=o;render()},onErr));
-    mode='cloud';tampil('app');
+    mode='cloud';
+    fs.doc(base+'settings/main').get().then(()=>{},e=>{if(e&&e.code==='permission-denied'){unsub.forEach(f=>f());unsub=[];$('#t-email').textContent=u.email;$('#t-info').textContent='Akun ini belum terdaftar sebagai toko, atau izinnya sudah dicabut. Pendaftaran toko hanya lewat link dari admin.';tampil('tunggu')}});
+    ADMIN=false;fs.collection('undanganToko').limit(500).get({source:'server'}).then(q=>{ADMIN=true;const o={};q.docs.forEach(x=>o[x.id]=x.data());S.undToko=o;
+      return fs.collection('izin').limit(500).get({source:'server'})}).then(q=>{if(q){const o={};q.docs.forEach(x=>o[x.id]=x.data());S.izin=o}render()}).catch(()=>{});
+    tampil('app');
     let pT=null;langgan(KOLO,col=>{if(col==='jual'||col==='products'){clearTimeout(pT);pT=setTimeout(()=>{if(navigator.onLine)prosesJualKasir()},800)}});
     unsub.push(db.doc('settings/main').onSnapshot(s=>{if(s.exists){S.settings=mergeSet(s.data());fillSettings()}render()},onErr));
     ['gambar','logo'].forEach(k=>unsub.push(db.doc('settings/'+k).onSnapshot(s=>{S[k]=s.exists?(s.data().data||''):'';render()},onErr)));
@@ -1372,7 +1410,10 @@ function boot(){
   auth.onAuthStateChanged(async u=>{unsub.forEach(f=>f());unsub=[];cart={};
     if(!u){db=null;simpanRahasia=null;mode='memuat';PERAN='owner';document.body.classList.remove('kasir');kosong();terapkanTema(null,'');tampil('login');return}
     SAYA={uid:u.uid,nama:'',email:u.email||''};kosong();$('#l-pass').value='';
-    if(!u.isAnonymous){$('#akun').textContent=u.email;mulaiOwner(u);return}
+    if(!u.isAnonymous){$('#akun').textContent=u.email;
+      if(daftarTunda){const tk=daftarTunda;daftarTunda='';try{const bt=fs.batch();bt.set(fs.doc('izin/'+u.uid),{token:tk,email:u.email,ts:Date.now()});bt.update(fs.doc('undanganToko/'+tk),{dipakai:u.uid,email:u.email});await bt.commit();tokenDaftar='';$('#l-daftar').hidden=true;$('#l-undangan').hidden=true}
+        catch(e){try{await u.delete()}catch(x){}$('#l-err').textContent='Link pendaftaran ditolak server. Minta link baru.';return}}
+      mulaiOwner(u);return}
     let ak=null;try{const d=await fs.doc('akun/'+u.uid).get();ak=d.exists?d.data():null}catch(e){}
     const k=kodeTunda;kodeTunda='';
     if(!ak&&k){try{const ref=fs.doc('undangan/'+k),d=await ref.get();
