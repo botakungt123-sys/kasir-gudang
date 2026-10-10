@@ -29,6 +29,31 @@ service cloud.firestore {
       allow update: if anggota(t) && resource.data.kasirUid == request.auth.uid
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['mintaBatal']);
     }
+    // Toko mitra (sesama akun milik owner): saling baca stok+HPP dan mengambil stok lewat dokumen transfer.
+    function mitra(t) { return masuk() && exists(/databases/$(database)/documents/toko/$(t)/mitra/$(request.auth.uid)); }
+    match /toko/{t}/stokMitra/{id} { allow read: if mitra(t); }
+    match /toko/{t}/transfer/{id} {
+      allow read: if mitra(t);
+      allow create: if mitra(t) && request.resource.data.arah == 'keluar' && request.resource.data.status == 'baru'
+        && request.resource.data.dari == t && request.resource.data.ke == request.auth.uid
+        && request.resource.data.qty is number && request.resource.data.qty > 0;
+    }
+    match /toko/{t}/mitra/{u} {
+      allow create: if masuk() && request.auth.uid == u
+        && request.resource.data.keys().hasOnly(['kode', 'nama', 'email', 'ts'])
+        && get(/databases/$(database)/documents/undanganMitra/$(request.resource.data.kode)).data.toko == t
+        && get(/databases/$(database)/documents/undanganMitra/$(request.resource.data.kode)).data.dipakai == null
+        && getAfter(/databases/$(database)/documents/undanganMitra/$(request.resource.data.kode)).data.dipakai == request.auth.uid;
+    }
+    match /undanganMitra/{k} {
+      allow get: if masuk();
+      allow create: if masuk() && request.resource.data.toko == request.auth.uid && request.resource.data.dipakai == null;
+      allow delete: if masuk() && resource.data.toko == request.auth.uid;
+      allow update: if masuk() && resource.data.dipakai == null
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['dipakai'])
+        && request.resource.data.dipakai == request.auth.uid
+        && existsAfter(/databases/$(database)/documents/toko/$(resource.data.toko)/mitra/$(request.auth.uid));
+    }
     // Tanda menu habis hari ini: owner dan kasir aktif.
     match /toko/{t}/habis/{id} { allow read, write: if anggota(t); }
     match /toko/{t}/anggota/{uid} {
