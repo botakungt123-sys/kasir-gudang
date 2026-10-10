@@ -32,6 +32,13 @@ service cloud.firestore {
     // Toko mitra (sesama akun milik owner): saling baca stok+HPP dan mengambil stok lewat dokumen transfer.
     function mitra(t) { return masuk() && exists(/databases/$(database)/documents/toko/$(t)/mitra/$(request.auth.uid)); }
     match /toko/{t}/stokMitra/{id} { allow read: if mitra(t); }
+    match /toko/{t}/menuMitra/{id} { allow read: if mitra(t); }
+    // Toko mitra menjual menu toko ini: dicatat di sini, diproses (potong stok + masuk laporan) oleh aplikasi toko ini.
+    match /toko/{t}/jualMitra/{id} {
+      allow read: if mitra(t);
+      allow create: if mitra(t) && request.resource.data.dari == request.auth.uid && request.resource.data.status == 'baru'
+        && request.resource.data.items is list && request.resource.data.sub is number;
+    }
     match /toko/{t}/transfer/{id} {
       allow read: if mitra(t);
       allow create: if mitra(t) && request.resource.data.arah == 'keluar' && request.resource.data.status == 'baru'
