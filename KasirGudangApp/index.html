@@ -322,6 +322,12 @@ dialog form{display:flex;flex-direction:column;gap:12px}
       <div class="tiles" id="tilesModal"></div>
       <p class="hint">Modal awal otomatis = semua uang yang sudah dibayarkan untuk belanja stok; pembelian kredit baru dihitung setelah ditandai lunas, dan sementara itu tampil sebagai utang ke pemasok. Jadi perkiraan kas = uang bersih dari penjualan. Matikan centang di Pengaturan bila modal awal ingin diisi sendiri; perkiraan kas lalu = modal awal − belanja yang sudah dibayar + uang bersih dari penjualan. Biaya operasional yang dicatat di Pembelian ikut mengurangi perkiraan kas.</p>
     </div>
+    <div class="panel" id="panelTitip" hidden>
+      <h2>Menu toko mitra</h2>
+      <div class="tiles" id="tilesTitip"></div>
+      <div class="tw"><table><thead><tr><th>Toko mitra</th><th class="r">Transaksi</th><th class="r">Omzet menu mitra</th><th class="r">Diskon</th><th class="r">Potongan aplikasi</th><th class="r">Bersih</th></tr></thead><tbody id="tTitip"></tbody></table></div>
+      <p class="hint">Dijual di toko ini: uang diterima toko ini tetapi omzet dan labanya milik toko mitra (tidak dihitung di laba toko ini); kolom Bersih = yang perlu disetor ke toko mitra. Dijual oleh toko mitra: sudah termasuk di omzet dan laba toko ini, uangnya ada di toko mitra.</p>
+    </div>
     <div class="panel" id="panelTfLap" hidden>
       <h2>Transfer stok antar toko</h2>
       <div class="tiles" id="tilesTf"></div>
@@ -367,7 +373,7 @@ dialog form{display:flex;flex-direction:column;gap:12px}
     </div>
     <div class="panel oo" id="panelMitra" hidden>
       <h2>Toko mitra (transfer stok)</h2>
-      <p class="hint">Hubungkan dua akun toko milik Anda supaya bisa saling mengambil stok. Di toko pertama tekan Buat kode mitra, lalu di toko kedua masukkan kode itu. Setelah terhubung, kedua toko bisa melihat stok dan HPP satu sama lain dan mengambil barang lewat tab Gudang.</p>
+      <p class="hint">Hubungkan dua akun toko milik Anda supaya masing-masing bisa menjual menu toko lainnya. Di toko pertama tekan Buat kode mitra, lalu di toko kedua masukkan kode itu. Menu toko mitra muncul di Kasir sebagai kelompok tersendiri; stok dan HPP dipotong dari toko mitra, dan penjualannya tercatat di laporan kedua toko.</p>
       <div class="row" style="align-items:flex-end"><button type="button" class="btn" data-act="buatKodeMitra">Buat kode mitra</button><span>Kode: <b class="num" id="kodeMitra" style="font-size:18px;letter-spacing:2px">–</b></span></div>
       <div class="row"><label style="flex:1 1 180px">Masukkan kode dari toko lain<input id="mt-kode" type="text" maxlength="9" autocomplete="off" style="text-transform:uppercase;letter-spacing:2px" placeholder="XXXX-XXXX"></label><button type="button" class="btn primary" data-act="hubungkanMitra">Hubungkan</button></div>
       <span class="sec">Toko terhubung</span>
@@ -530,7 +536,7 @@ dialog form{display:flex;flex-direction:column;gap:12px}
 <script>
 const CH={offline:'Langsung',gofood:'GoFood',grabfood:'GrabFood',shopeefood:'ShopeeFood'};
 const DEF={toko:'Toko Saya',modalAwal:0,modalAuto:true,pajak:0,margin:40,bulat:500,kertas:58,kaki:'Terima kasih',tema:{preset:'bawaan',lapisan:70},logoStruk:true,watermark:false,kemasan:[],kemasKat:{makanan:[],minuman:[]},ch:{gofood:{fee:20,markup:0,auto:true},grabfood:{fee:20,markup:0,auto:true},shopeefood:{fee:20,markup:0,auto:true}}};
-const S={gambar:'',logo:'',products:{},menus:{},pesanan:{},integrasi:{},purchases:{},sales:{},biaya:{},stokLog:{},kasir:{},jual:{},anggota:{},kodeKasir:{},rekap:{},arsip:{},habis:{},mitra:{},transfer:{},mitraStok:{},mitraTf:{},stokMitra:{},stok:{},publik:{},settings:JSON.parse(JSON.stringify(DEF))};
+const S={gambar:'',logo:'',products:{},menus:{},pesanan:{},integrasi:{},purchases:{},sales:{},biaya:{},stokLog:{},kasir:{},jual:{},anggota:{},kodeKasir:{},rekap:{},arsip:{},habis:{},mitra:{},transfer:{},mitraStok:{},mitraTf:{},stokMitra:{},mitraMenu:{},mitraJm:{},menuMitra:{},jualMitra:{},stok:{},publik:{},settings:JSON.parse(JSON.stringify(DEF))};
 const LS='kasir-gudang-v1';
 let cara='tunai',qrisSiap=false;
 let katPilih='semua',modeHabis=false,PERAN='owner',SAYA={uid:'',nama:'',email:''},pilihM=null,olId=null,olRows=[],prId=null;
@@ -538,7 +544,10 @@ const BIAYA={gas:'Gas',listrik:'Listrik',air:'Air',sewa:'Sewa tempat',gaji:'Gaji
 const ALASAN={basi:'Basi / kedaluwarsa',tumpah:'Tumpah / jatuh',rusak:'Rusak',salah:'Salah masak / retur',pakai:'Dipakai sendiri / karyawan',lain:'Lainnya',koreksi:'Koreksi lewat Ubah barang'};
 const JLOG={buang:'Terbuang',opname:'Stok opname',produksi:'Produksi',transfer:'Transfer antar toko'};
 const habisHari=id=>((S.habis||{})[id]||{}).tgl===hariIni();
-const tagihS=s=>s.sub-(s.diskon||0)+(s.pajak||0);
+const tagihS=s=>s.sub-(s.diskon||0)+(s.pajak||0)+(s.titip||[]).reduce((a,t)=>a+num(t.sub)-num(t.diskon)+num(t.pajak),0);
+const X=id=>String(id).startsWith('x_');
+// gabungkan bagian menu mitra (titipan) supaya struk menampilkan seluruh pesanan
+const gabungStruk=s=>!(s.titip||[]).length?s:{...s,items:s.items.concat(...s.titip.map(t=>t.items)),sub:s.sub+s.titip.reduce((a,t)=>a+num(t.sub),0),diskon:(s.diskon||0)+s.titip.reduce((a,t)=>a+num(t.diskon),0),pajak:(s.pajak||0)+s.titip.reduce((a,t)=>a+num(t.pajak),0),titip:null};
 const BLN=['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
 const awalBulan=(y,m)=>new Date(y,m,1).getTime();
 const LIVE_A=()=>{const d=new Date();return awalBulan(d.getFullYear(),d.getMonth()-1)};
@@ -622,7 +631,7 @@ const menuHpp=(m,o)=>hppPakai(pakai(m,o,1,{}));
 // Harga = harga dasar + tambahan pilihan. Harga dasar otomatis menutup HPP isi menu + pilihan gratis yang paling mahal.
 const optHpp=op=>{const r=opRef(op),q=op.qty===''||op.qty==null?1:num(op.qty);if(!r.id)return 0;if(r.t==='m'){const sm=S.menus[r.id];return sm?(menuHpp(sm,'')+kemasHpp(sm))*q:0}return S.products[r.id]?(S.products[r.id].cost||0)*q:0};
 const optAdd=(m,o)=>pilDipilih(m,o).reduce((a,op)=>a+(num(op.add)>0?Math.ceil(num(op.add)/B())*B():0),0);
-const menuBase=m=>{if(PERAN==='kasir')return num(m.base);const h=hppPakai(pakai({comps:m.comps},'',1,{}))+grupPil(m).reduce((a,g)=>{const gr=g.opts.filter(op=>!(num(op.add)>0));return a+(gr.length?Math.max(...gr.map(optHpp)):0)},0)+kemasHpp(m);
+const menuBase=m=>{if(PERAN==='kasir'||m.mitra)return num(m.base);const h=hppPakai(pakai({comps:m.comps},'',1,{}))+grupPil(m).reduce((a,g)=>{const gr=g.opts.filter(op=>!(num(op.add)>0));return a+(gr.length?Math.max(...gr.map(optHpp)):0)},0)+kemasHpp(m);
   return(m.auto!==false?hargaAuto(h,num(m.margin)):0)||Math.ceil((m.price||0)/B())*B()};
 const menuHarga=(m,o)=>menuBase(m)+optAdd(m,o);
 const menuCh=(m,o,c)=>c==='offline'?menuHarga(m,o):hargaApp(menuHarga(m,o),c);
@@ -632,9 +641,9 @@ function butuhCart(){const u={};for(const k in cart){const e=cart[k];if(e.t==='m
 function bisa(m,o,used){const u=pakai(m,o,1,{});used=used||{};let n=Infinity;
   for(const id in u){if(!(u[id]>0))continue;const p=S.products[id];n=Math.min(n,p?Math.floor((p.stock-(used[id]||0))/u[id]+1e-9):0)}
   return n===Infinity?0:Math.max(n,0)}
-const menuList=()=>Object.entries(S.menus).map(([id,m])=>({id,...m})).sort((a,b)=>(a.kind==='paket'?0:1)-(b.kind==='paket'?0:1)||a.name.localeCompare(b.name,'id'));
+const menuList=semua=>Object.entries(S.menus).filter(([id])=>semua||!X(id)).map(([id,m])=>({id,...m})).sort((a,b)=>(a.kind==='paket'?0:1)-(b.kind==='paket'?0:1)||a.name.localeCompare(b.name,'id'));
 const KAT={makanan:'Makanan',minuman:'Minuman',lain:'Lainnya'};
-const GRUP=[['paket','Paket'],['makanan','Makanan'],['minuman','Minuman'],['lain','Lainnya']],grupMenu=m=>m.kind==='paket'?'paket':KAT[m.kategori]?m.kategori:'lain';
+const GRUP=[['paket','Paket'],['makanan','Makanan'],['minuman','Minuman'],['lain','Lainnya']],grupMenu=m=>m.mitra?'x:'+m.mitra:m.kind==='paket'?'paket':KAT[m.kategori]?m.kategori:'lain';
 function kemasMenu(m,qty,out,d,o){d=d||0;if(!m||d>4)return out;
   if(o!=null)pilDipilih(m,o).forEach(op=>{const r=opRef(op);if(r.t==='m'&&r.id)kemasMenu(S.menus[r.id],qty*(op.qty===''||op.qty==null?1:num(op.qty)),out,d+1,'')});
   if(m.kind==='paket'){(m.comps||[]).forEach(c=>{if(c.t==='m')kemasMenu(S.menus[c.id],qty*num(c.qty),out,d+1)});return out}
@@ -768,10 +777,11 @@ function hitungNota(){
 }
 const statusStok=p=>p.stock<=0?'out':p.stock<=(p.min||0)?'low':'ok';
 const LBL={ok:'Aman',low:'Tipis',out:'Habis'};
-const prodList=()=>Object.entries(S.products).map(([id,p])=>({id,...p})).sort((a,b)=>a.name.localeCompare(b.name,'id'));
+const prodList=()=>Object.entries(S.products).filter(([id])=>!X(id)).map(([id,p])=>({id,...p})).sort((a,b)=>a.name.localeCompare(b.name,'id'));
 
 /* ---------- render ---------- */
 function render(){
+  pasangMitra();
   const st=S.settings,ps=prodList();
   if(!$('#v-atur').contains(document.activeElement))terapkanTema(st.tema,S.gambar);siapkanLogoRaster();$('#t-logoPrev').hidden=!S.logo;if(S.logo&&$('#t-logoPrev').src!==S.logo)$('#t-logoPrev').src=S.logo;
   $('#toko').textContent=st.toko||'Kasir Gudang';
@@ -793,10 +803,10 @@ function render(){
   const tp=tungguPesanan();
   $('#inbox').innerHTML=tp.length?`<span class="sec">Pesanan masuk dari aplikasi (${tp.length})</span>`+tp.map(([id,p])=>`<div class="tile" style="gap:6px${id===prosesId?';border-color:var(--accent)':''}"><span>${esc(CH[p.channel]||p.channel)} · ${waktu(p.ts)}${p.uji?' · simulasi':''}</span><b style="font-family:var(--ui);font-size:15px">${esc(p.pemesan||'Tanpa nama')}</b><small style="font-size:13px;color:var(--ink)">${esc((p.items||[]).map(i=>nf(i.qty)+'× '+i.nama).join(', '))}</small><small>Total di aplikasi ${rp(p.total)}</small><div class="row"><button class="btn sm primary" data-act="proses" data-id="${id}" ${id===prosesId?'disabled':''}>${id===prosesId?'Sedang di nota':'Proses ke nota'}</button><button class="btn sm danger" data-act="tolak" data-id="${id}" data-confirm="1">Tolak</button></div></div>`).join(''):'';
   const pp=prosesId&&S.pesanan[prosesId];$('#prosesInfo').hidden=!pp;if(pp)$('#prosesInfo').textContent='Memproses pesanan '+(CH[pp.channel]||'')+' dari '+(pp.pemesan||'tanpa nama')+'. Cek kemasan, lalu Simpan transaksi.';
-  const used=butuhCart(),ms=menuList();
-  const tM=ms.filter(m=>!m.sembunyi&&(!q||m.name.toLowerCase().includes(q)));
+  const used=butuhCart(),ms=menuList(),msK=menuList(true);
+  const tM=msK.filter(m=>!m.sembunyi&&(!q||m.name.toLowerCase().includes(q)));
   $('#btnModeHabis').textContent=modeHabis?'Selesai mengatur menu habis':'Atur menu habis';$('#btnModeHabis').classList.toggle('primary',modeHabis);$('#hintHabis').hidden=!modeHabis;
-  const ada=GRUP.filter(([g])=>tM.some(m=>grupMenu(m)===g));if(katPilih!=='semua'&&!ada.some(([g])=>g===katPilih))katPilih='semua';
+  const GR=GRUP.concat([...new Set(tM.filter(m=>m.mitra).map(m=>m.mitra))].map(u=>['x:'+u,'Menu '+((tM.find(m=>m.mitra===u)||{}).mitraNama||namaMitra(u))])),ada=GR.filter(([g])=>tM.some(m=>grupMenu(m)===g));if(katPilih!=='semua'&&!ada.some(([g])=>g===katPilih))katPilih='semua';
   $('#katSeg').hidden=ada.length<2;$('#katSeg').innerHTML=[['semua','Semua']].concat(ada).map(([g,l])=>`<button type="button" data-act="kat" data-id="${g}" aria-pressed="${g===katPilih}">${l}</button>`).join('');
   const kartu=m=>{const gp=grupPil(m),no=gp.length,hb=habisHari(m.id),n=hb?0:bisa(m,'',used);
     if(modeHabis)return`<button class="item" data-act="togHabis" data-id="${m.id}" style="${hb?'border-color:var(--bad)':''}"><span class="tag">${hb?'Habis hari ini':'Tersedia'}</span><b>${esc(m.name)}</b><span class="s">${hb?'Ketuk untuk tersedia lagi':'Ketuk untuk tandai habis'}</span></button>`;
@@ -862,7 +872,7 @@ function render(){
   $('#perInfo').textContent=PD.memuat?'Memuat data '+blnNama(per.slice(2))+' dari server…':PD.tambah&&PD.tambah.length?'Total sudah mencakup semua bulan. Rincian (jurnal, menu, riwayat) hanya 2 bulan terakhir; pilih nama bulan untuk rinciannya.':'';
   const belanjaPer=Object.values(S.purchases).filter(b=>b.ts>=PD.a&&b.ts<PD.b).reduce((a,b)=>a+b.total,0);
   const JB=PD.batal,nb=JB.length+(PD.tambah||[]).reduce((a,r)=>a+num(r.nb),0),vb=JB.reduce((a,[,x])=>a+tagihS(x),0)+(PD.tambah||[]).reduce((a,r)=>a+num(r.vb),0);
-  $('#tilesJual').innerHTML=tile('Omzet',rp(T.sub),T.n+' transaksi')+(nb?`<div class="tile" style="border-color:var(--bad)"><span>Dibatalkan</span><b style="color:var(--bad)">${rp(vb)}</b><small>${nb} transaksi · rincian di bawah</small></div>`:'')+(T.disk?tile('Diskon & promo',rp(-T.disk),pct(T.disk,T.sub)+' dari omzet'):'')+tile('Potongan aplikasi',rp(-T.fee),pct(T.fee,T.sub)+' dari omzet')+tile('HPP terjual',rp(T.hpp),pct(T.hpp,T.sub)+' dari omzet')+tile('Laba kotor',rp(RG.kotor),'margin '+pct(RG.kotor,T.sub))+tile('Biaya operasional',rp(-RG.biaya))+(RG.buang||RG.opname?tile('Terbuang & selisih stok',rp(-(RG.buang+RG.opname))):'')+`<div class="tile" style="border-color:var(--accent)"><span>Laba bersih</span><b style="color:var(${RG.bersih<0?'--bad':'--accent'})">${rp(RG.bersih)}</b><small>margin ${pct(RG.bersih,T.sub)}</small></div>`+tile('Belanja stok',rp(belanjaPer),'di periode ini')+(()=>{const lg=jl.filter(([,x])=>x.channel==='offline'),q=lg.filter(([,x])=>x.cara==='qris').reduce((a,[,x])=>a+tagihS(x),0),t=lg.filter(([,x])=>x.cara!=='qris').reduce((a,[,x])=>a+tagihS(x),0);return tile('Langsung: tunai',rp(t))+tile('Langsung: QRIS',rp(q),'cocokkan dengan mutasi QRIS')})();
+  $('#tilesJual').innerHTML=tile('Omzet',rp(T.sub),T.n+' transaksi')+(nb?`<div class="tile" style="border-color:var(--bad)"><span>Dibatalkan</span><b style="color:var(--bad)">${rp(vb)}</b><small>${nb} transaksi · rincian di bawah</small></div>`:'')+(T.disk?tile('Diskon & promo',rp(-T.disk),pct(T.disk,T.sub)+' dari omzet'):'')+tile('Potongan aplikasi',rp(-T.fee),pct(T.fee,T.sub)+' dari omzet')+tile('HPP terjual',rp(T.hpp),pct(T.hpp,T.sub)+' dari omzet')+tile('Laba kotor',rp(RG.kotor),'margin '+pct(RG.kotor,T.sub))+tile('Biaya operasional',rp(-RG.biaya))+(RG.buang||RG.opname?tile('Terbuang & selisih stok',rp(-(RG.buang+RG.opname))):'')+`<div class="tile" style="border-color:var(--accent)"><span>Laba bersih</span><b style="color:var(${RG.bersih<0?'--bad':'--accent'})">${rp(RG.bersih)}</b><small>margin ${pct(RG.bersih,T.sub)}</small></div>`+tile('Belanja stok',rp(belanjaPer),'di periode ini')+(()=>{const lg=jl.filter(([,x])=>x.channel==='offline'&&!x.viaMitra),q=lg.filter(([,x])=>x.cara==='qris').reduce((a,[,x])=>a+tagihS(x),0),t=lg.filter(([,x])=>x.cara!=='qris').reduce((a,[,x])=>a+tagihS(x),0);return tile('Langsung: tunai',rp(t))+tile('Langsung: QRIS',rp(q),'cocokkan dengan mutasi QRIS')})();
   {const br=(l,v,c)=>`<tr${c?' style="font-weight:700"':''}><td>${l}</td><td class="r"${c?` style="color:var(${v<0?'--bad':'--accent'})"`:''}>${rp(v)}</td></tr>`;
    $('#tBersih').innerHTML=br('Omzet',T.sub)+(T.disk?br('Diskon & promo',-T.disk):'')+br('Potongan aplikasi',-T.fee)+br('HPP terjual (termasuk kemasan)',-T.hpp)+br('Laba kotor',RG.kotor,1)+Object.entries(RG.bk).sort((a,b)=>b[1]-a[1]).map(([k,v])=>br('Biaya: '+(BIAYA[k]||esc(k)),-v)).join('')+(RG.biaya?'':br('Biaya operasional (belum ada catatan)',0))+(RG.buang?br('Barang terbuang',-RG.buang):'')+(RG.opname?br(RG.opname>0?'Selisih stok opname (kurang)':'Selisih stok opname (lebih)',-RG.opname):'')+br('Laba bersih',RG.bersih,1)}
   $('#tChan').innerHTML=Object.keys(CH).map(c=>{const o=per_c[c],lk=o.net-o.hpp;return`<tr><td>${CH[c]}</td><td class="r">${o.n}</td><td class="r">${rp(o.sub)}</td><td class="r">${rp(-o.disk)}</td><td class="r">${rp(-o.fee)}</td><td class="r">${rp(o.net)}</td><td class="r">${rp(o.hpp)}</td><td class="r">${rp(lk)}</td><td class="r">${pct(lk,o.sub)}</td></tr>`}).join('');
@@ -878,10 +888,15 @@ function render(){
    const jm=Array(24).fill(0),jo=Array(24).fill(0);jl.forEach(([,s])=>{const h=new Date(s.ts).getHours();jm[h]++;jo[h]+=s.sub});const ad=jm.map((n,h)=>n?h:-1).filter(h=>h>=0),mx=Math.max(...jm,1);
    $('#jamRamai').innerHTML=ad.length?Array.from({length:ad[ad.length-1]-ad[0]+1},(_,k)=>ad[0]+k).map(h=>`<div class="row" style="gap:8px;flex-wrap:nowrap;align-items:center"><span class="num" style="width:48px;flex:none;font-size:12px">${String(h).padStart(2,'0')}:00</span><div style="flex:1;background:var(--line);border-radius:4px;height:14px;min-width:40px"><div style="width:${jm[h]/mx*100}%;background:var(--accent);height:100%;border-radius:4px"></div></div><span class="num" style="flex:none;font-size:12px;min-width:110px;text-align:right">${jm[h]} trx · ${rp(jo[h])}</span></div>`).join(''):'<p class="hint">Belum ada penjualan di periode ini.</p>'}
   {const tl=Object.values(S.transfer).filter(t=>t.ts>=PD.a&&t.ts<PD.b).sort((a,b)=>b.ts-a.ts),vm=tl.filter(t=>t.arah==='masuk').reduce((a,t)=>a+t.qty*t.cost,0),vk=tl.filter(t=>t.arah==='keluar').reduce((a,t)=>a+t.qty*t.cost,0);
-   $('#panelTfLap').hidden=!tl.length;$('#tilesTf').innerHTML=tile('Masuk dari mitra',rp(vm),tl.filter(t=>t.arah==='masuk').length+' transfer')+tile('Keluar ke mitra',rp(vk),tl.filter(t=>t.arah==='keluar').length+' transfer')+tile('Selisih',rp(vm-vk),vm>vk?'toko ini menerima lebih banyak':vm<vk?'toko ini memberi lebih banyak':'seimbang');
+   $('#panelTfLap').hidden=true;$('#tilesTf').innerHTML=tile('Masuk dari mitra',rp(vm),tl.filter(t=>t.arah==='masuk').length+' transfer')+tile('Keluar ke mitra',rp(vk),tl.filter(t=>t.arah==='keluar').length+' transfer')+tile('Selisih',rp(vm-vk),vm>vk?'toko ini menerima lebih banyak':vm<vk?'toko ini memberi lebih banyak':'seimbang');
    $('#tTfLap').innerHTML=tl.map(t=>`<tr><td>${waktu(t.ts)}</td><td>${t.arah==='masuk'?'Masuk dari '+esc(t.dariNama||namaMitra(t.dari)):'Keluar ke '+esc(t.keNama||namaMitra(t.ke))}</td><td class="wrapc">${esc(t.name)}</td><td class="r">${nf(t.qty)} ${esc(t.unit||'')}</td><td class="r">${rp(t.qty*t.cost)}</td><td>${t.status==='baru'?'Menunggu diproses':'Selesai'}</td></tr>`).join('')}
+  {const tg={},vm={};jl.forEach(([,x])=>{(x.titip||[]).forEach(t=>{const o=tg[t.mitra]=tg[t.mitra]||{nama:t.nama,n:0,sub:0,d:0,f:0,net:0};o.n++;o.sub+=num(t.sub);o.d+=num(t.diskon);o.f+=num(t.fee);o.net+=num(t.net)});
+     if(x.viaMitra){const o=vm[x.viaMitra]=vm[x.viaMitra]||{n:0,sub:0,net:0};o.n++;o.sub+=x.sub;o.net+=x.net}});
+   const tt=Object.values(tg),tv=Object.entries(vm);$('#panelTitip').hidden=!tt.length&&!tv.length;
+   $('#tilesTitip').innerHTML=tile('Titipan untuk disetor',rp(tt.reduce((a,o)=>a+o.net,0)),'menu mitra yang dijual di toko ini')+tile('Dijual oleh toko mitra',rp(tv.reduce((a,[,o])=>a+o.net,0)),tv.reduce((a,[,o])=>a+o.n,0)+' transaksi · '+esc(tv.map(([k])=>k).join(', ')));
+   $('#tTitip').innerHTML=tt.map(o=>`<tr><td>${esc(o.nama)}</td><td class="r">${o.n}</td><td class="r">${rp(o.sub)}</td><td class="r">${rp(-o.d)}</td><td class="r">${rp(-o.f)}</td><td class="r"><b>${rp(o.net)}</b></td></tr>`).join('')||'<tr><td colspan="6"><p class="empty">Belum ada menu mitra yang dijual di toko ini pada periode ini.</p></td></tr>'}
   $('#panelBatalLog').hidden=!JB.length;$('#tBatal').innerHTML=JB.map(([id,x])=>`<tr><td>${waktu(x.ts)}</td><td>${CH[x.channel]||x.channel}</td><td class="wrapc">${esc(x.pemesan||'')}${x.kasir?'<br><small>kasir '+esc(x.kasir)+'</small>':''}</td><td class="wrapc">${esc(x.items.map(i=>nf(i.qty)+'× '+i.name).join(', '))}</td><td class="r">${rp(tagihS(x))}</td><td class="wrapc">${esc(x.batal.alasan||'')}</td><td class="wrapc">${esc(x.batal.diminta?'diminta '+x.batal.diminta+', disetujui '+(x.batal.oleh||'owner'):(x.batal.oleh||'owner'))}<br><small>${waktu(x.batal.ts)}</small></td><td><button class="btn sm" data-act="struk" data-id="${id}">Struk</button></td></tr>`).join('');
-  $('#tJual').innerHTML=jl.length?jl.slice(0,200).map(([id,s])=>`<tr><td>${waktu(s.ts)}</td><td>${CH[s.channel]||s.channel}</td><td class="wrapc">${s.pemesan?'<b>'+esc(s.pemesan)+'</b> · ':''}${s.kasir?'<small>kasir '+esc(s.kasir)+'</small> · ':''}${s.cara==='qris'?'<span class="pill ok">QRIS</span> ':''}${esc(s.items.map(i=>nf(i.qty)+'× '+i.name).join(', '))}</td><td class="r">${rp(s.sub)}</td><td class="r">${rp(-s.fee)}</td><td class="r">${rp(s.net)}</td><td class="r">${rp(s.net-s.hpp)}</td><td><button class="btn sm" data-act="struk" data-id="${id}">Struk</button> <button class="btn sm danger" data-act="batalJual" data-id="${id}">Batalkan</button></td></tr>`).join('')
+  $('#tJual').innerHTML=jl.length?jl.slice(0,200).map(([id,s])=>`<tr><td>${waktu(s.ts)}</td><td>${CH[s.channel]||s.channel}</td><td class="wrapc">${s.pemesan?'<b>'+esc(s.pemesan)+'</b> · ':''}${s.kasir?'<small>kasir '+esc(s.kasir)+'</small> · ':''}${(s.titip||[]).length?'<span class="pill low">+ menu mitra '+rp(s.titip.reduce((a,t)=>a+num(t.sub),0))+'</span> ':''}${s.cara==='qris'?'<span class="pill ok">QRIS</span> ':''}${esc(s.items.map(i=>nf(i.qty)+'× '+i.name).join(', '))}</td><td class="r">${rp(s.sub)}</td><td class="r">${rp(-s.fee)}</td><td class="r">${rp(s.net)}</td><td class="r">${rp(s.net-s.hpp)}</td><td><button class="btn sm" data-act="struk" data-id="${id}">Struk</button> <button class="btn sm danger" data-act="batalJual" data-id="${id}">Batalkan</button></td></tr>`).join('')
     :'<tr><td colspan="8"><p class="empty">Belum ada penjualan di periode ini.</p></td></tr>';
 }
 const CARA={tunai:'Tunai',transfer:'Transfer',qris:'QRIS / e-wallet',lain:'Lainnya'};
@@ -902,7 +917,7 @@ function marginMenu(){return menuList().map(m=>{const h=menuHpp(m,0)+kemasHpp(m)
   const c=Object.keys(CH).map(k=>{const harga=k==='offline'?hj:hargaApp(hj,k),bersih=k==='offline'?harga:harga*(1-num(S.settings.ch[k].fee)/100),l=bersih-h;return{harga,l,p:harga>0?l/harga:0}});
   return{nm:m.name,h,c,min:Math.min(...c.map(x=>x.p))}}).sort((a,b)=>a.min-b.min)}
 function kasHari(tgl){const a=new Date(tgl+'T00:00:00').getTime(),b=a+864e5,inR=t=>t>=a&&t<b,d=S.kasir[tgl]||{},potong=S.settings.kasPotong!==false;
-  const jl=Object.values(S.sales).filter(s=>inR(s.ts)&&!s.batal),lg=jl.filter(s=>s.channel==='offline');
+  const jl=Object.values(S.sales).filter(s=>inR(s.ts)&&!s.batal),lg=jl.filter(s=>s.channel==='offline'&&!s.viaMitra);
   const tunai=lg.filter(s=>s.cara!=='qris').reduce((x,s)=>x+tagihS(s),0),qris=lg.filter(s=>s.cara==='qris').reduce((x,s)=>x+tagihS(s),0);
   const app={};['gofood','grabfood','shopeefood'].forEach(c=>app[c]=jl.filter(s=>s.channel===c).reduce((x,s)=>x+s.net,0));
   const bT=Object.values(S.biaya).filter(x=>inR(x.ts)&&(x.cara||'tunai')==='tunai').reduce((x,y)=>x+num(y.jumlah),0);
@@ -911,8 +926,9 @@ function kasHari(tgl){const a=new Date(tgl+'T00:00:00').getTime(),b=a+864e5,inR=
 const namaMitra=u=>((S.mitra[u]||{}).nama||(S.mitra[u]||{}).email||'toko mitra');
 // stok mitra yang masih tersedia = cermin stok mitra − transfer keluar yang belum diproses toko itu
 function stokTersediaMitra(u){const o={},pend={};Object.values(S.mitraTf[u]||{}).filter(t=>t.arah==='keluar'&&t.status==='baru').forEach(t=>pend[t.pid]=(pend[t.pid]||0)+num(t.qty));
+  Object.values(S.mitraJm[u]||{}).filter(j=>j.status==='baru').forEach(j=>(j.items||[]).forEach(i=>{for(const k in i.use||{})pend[k]=(pend[k]||0)+num(i.use[k])*num(i.qty)}));
   for(const [id,p] of Object.entries(S.mitraStok[u]||{}))o[id]={...p,stock:r2(num(p.stock)-(pend[id]||0))};return o}
-function isiAmbil(force){const ms=Object.keys(S.mitra);$('#panelAmbil').hidden=!ms.length||!(db&&db.rootDoc);if($('#panelAmbil').hidden)return;
+function isiAmbil(force){$('#panelAmbil').hidden=true;return;const ms=Object.keys(S.mitra);
   const ae=document.activeElement;if(!force&&['tf-mitra','tf-barang','tf-tujuan'].includes(ae&&ae.id))return;
   const sm=$('#tf-mitra'),cm=sm.value;sm.innerHTML=ms.map(u=>`<option value="${u}">${esc(namaMitra(u))}</option>`).join('');if(cm&&S.mitra[cm])sm.value=cm;
   const st=stokTersediaMitra(sm.value),sb=$('#tf-barang'),cb=sb.value,ls=Object.entries(st).sort((a,b)=>a[1].name.localeCompare(b[1].name,'id'));
@@ -926,19 +942,45 @@ function renderMitra(){const ada=!!(db&&db.rootDoc);$('#panelMitra').hidden=!ada
   $('#kodeMitra').textContent=S.settings.kodeMitra?S.settings.kodeMitra.slice(0,4)+'-'+S.settings.kodeMitra.slice(4):'–';
   const ms=Object.entries(S.mitra);$('#mitraBox').innerHTML=ms.length?ms.map(([u,m])=>`<div class="row" style="justify-content:space-between;align-items:center"><span><b>${esc(m.nama||'')}</b> · ${esc(m.email||'')} · sejak ${waktu(m.ts)}</span><button type="button" class="btn sm danger" data-act="putusMitra" data-id="${u}" data-confirm="1">Putuskan</button></div>`).join(''):'<p class="hint">Belum ada toko terhubung.</p>';
   isiAmbil();
-  const tf=Object.entries(S.transfer).sort((a,b)=>b[1].ts-a[1].ts);$('#panelTf').hidden=!tf.length;
+  const tf=Object.entries(S.transfer).sort((a,b)=>b[1].ts-a[1].ts);$('#panelTf').hidden=true;
   $('#tTf').innerHTML=tf.slice(0,200).map(([id,t])=>`<tr><td>${waktu(t.ts)}</td><td>${t.arah==='masuk'?'Masuk dari '+esc(t.dariNama||namaMitra(t.dari)):'Keluar ke '+esc(t.keNama||namaMitra(t.ke))}</td><td class="wrapc">${esc(t.name)}</td><td class="r">${nf(t.qty)} ${esc(t.unit||'')}</td><td class="r">${rp(t.cost)}</td><td class="r">${rp(t.qty*t.cost)}</td><td><span class="pill ${t.status==='baru'?'low':'ok'}">${t.status==='baru'?'Menunggu diproses':'Selesai'}</span></td><td class="wrapc">${esc(t.note||'')}</td></tr>`).join('')}
 let pubM=null;function jadwalMitra(){if(PERAN!=='owner'||!db||!db.rootDoc||!(Object.keys(S.mitra).length||S.settings.kodeMitra))return;clearTimeout(pubM);pubM=setTimeout(sinkMitra,1500)}
 function sinkMitra(){if(PERAN!=='owner'||!db||!db.rootDoc||!(Object.keys(S.mitra).length||S.settings.kodeMitra))return;const w={};
-  for(const [id,p] of Object.entries(S.products))w[id]={name:p.name,unit:p.unit||'',stock:r2(p.stock),cost:r2(p.cost||0),jenis:p.jenis||'bahan'};
+  for(const [id,p] of Object.entries(S.products))if(!X(id))w[id]={name:p.name,unit:p.unit||'',stock:r2(p.stock),cost:r2(p.cost||0),jenis:p.jenis||'bahan'};
   for(const id in w)if(stab(w[id])!==stab(S.stokMitra[id])){db.doc('stokMitra/'+id).set(w[id]);S.stokMitra={...S.stokMitra,[id]:w[id]}}
-  for(const id in S.stokMitra)if(!w[id]){db.doc('stokMitra/'+id).delete();const o={...S.stokMitra};delete o[id];S.stokMitra=o}}
+  for(const id in S.stokMitra)if(!w[id]){db.doc('stokMitra/'+id).delete();const o={...S.stokMitra};delete o[id];S.stokMitra=o}
+  const wm={};for(const [id,m] of Object.entries(S.menus))if(!X(id))wm[id]={name:m.name,kind:m.kind||'alacarte',kategori:m.kategori||'lain',comps:(m.comps||[]).map(c=>({t:c.t,id:c.id,qty:num(c.qty),porsi:num(c.porsi)||1})),optGroups:grupPil(m).map(g=>({name:g.name,opts:g.opts.map(op=>({label:op.label||'',...opRef(op),qty:op.qty===''||op.qty==null?1:num(op.qty),add:num(op.add)}))})),sembunyi:!!m.sembunyi,base:menuBase(m)};
+  for(const id in wm)if(stab(wm[id])!==stab(S.menuMitra[id])){db.doc('menuMitra/'+id).set(wm[id]);S.menuMitra={...S.menuMitra,[id]:wm[id]}}
+  for(const id in S.menuMitra)if(!wm[id]){db.doc('menuMitra/'+id).delete();const o={...S.menuMitra};delete o[id];S.menuMitra=o}}
 let tfJalan=false;
 async function prosesTransfer(){if(PERAN!=='owner'||!db||tfJalan)return;const td=Object.entries(S.transfer).filter(([,t])=>t.arah==='keluar'&&t.status==='baru');if(!td.length)return;tfJalan=true;let n=0;
   try{for(const [id,t] of td){if(db.klaim&&!(await db.klaim(id,'transfer')))continue;const p=S.products[t.pid];
       if(p){await put('products',t.pid,{...p,stock:r2(p.stock-num(t.qty))});await put('stokLog',newId(),{ts:Date.now(),pid:t.pid,name:p.name,unit:p.unit||'',jenis:'transfer',qty:-num(t.qty),cost:num(t.cost),nilai:r2(-num(t.qty)*num(t.cost)),alasan:'',note:'Keluar ke '+(t.keNama||namaMitra(t.ke))+(t.note?' · '+t.note:'')})}
       await ubahDoc('transfer',id,{status:'selesai',tsProses:Date.now()});n++}
     sinkMitra();if(n)toast(n+' transfer stok ke toko mitra diproses')}finally{tfJalan=false;render()}}
+function pasangMitra(){if(PERAN!=='owner')return;const P={},M={};for(const[id,p] of Object.entries(S.products))if(!X(id))P[id]=p;for(const[id,m] of Object.entries(S.menus))if(!X(id))M[id]=m;
+  for(const u of Object.keys(S.mitra)){const px=id=>'x_'+u+'_'+id,nm=namaMitra(u);
+    for(const[id,p] of Object.entries(stokTersediaMitra(u)))P[px(id)]={...p,mitra:u};
+    for(const[id,m] of Object.entries(S.mitraMenu[u]||{})){if(m.sembunyi)continue;M[px(id)]={...m,mitra:u,mitraNama:nm,kemasKat:false,comps:(m.comps||[]).map(c=>({...c,id:px(c.id)})),optGroups:(m.optGroups||[]).map(g=>({...g,opts:(g.opts||[]).map(op=>({...op,id:op.id?px(op.id):op.id}))}))}}}
+  S.products=P;S.menus=M}
+// pisahkan bagian menu mitra dari penjualan: toko ini mencatatnya sebagai titipan, toko mitra mencatatnya sebagai penjualan
+function pisahTitip(sale){const grp={},own=[];(sale.items||[]).forEach(i=>{const m=String(i.id||'').match(/^m:x_([^_]+)_/);if(m)(grp[m[1]]=grp[m[1]]||[]).push(i);else own.push(i)});
+  if(!Object.keys(grp).length)return{sale,kirim:[]};const sub=num(sale.sub),titip=[],kirim=[];let hm=0,sd=0,sp=0,sf=0,sn=0,ss=0;
+  for(const u in grp){const its=grp[u],su=its.reduce((a,i)=>a+i.price*i.qty,0),sh=sub>0?su/sub:0,d=num(sale.diskon)*sh,pj=num(sale.pajak)*sh,fe=num(sale.fee)*sh;hm+=its.reduce((a,i)=>a+num(i.hpp)*i.qty,0);
+    titip.push({mitra:u,nama:namaMitra(u),items:its.map(i=>({name:i.name,qty:i.qty,price:i.price})),sub:su,diskon:d,pajak:pj,fee:fe,net:su-d-fe});ss+=su;sd+=d;sp+=pj;sf+=fe;sn+=su-d-fe;
+    kirim.push({u,doc:{ts:sale.ts,dari:SAYA.uid,dariNama:S.settings.toko||SAYA.email||'',channel:sale.channel,cara:sale.cara||'',pemesan:sale.pemesan||'',kasir:sale.kasir||'',
+      items:its.map(i=>{const use={};for(const k in i.use||{}){const mm=k.match(/^x_[^_]+_(.+)$/);use[mm?mm[1]:k]=i.use[k]}return{id:String(i.id).replace(/^m:x_[^_]+_/,'m:'),name:i.name,qty:i.qty,price:i.price,use}}),
+      sub:su,diskon:d,pajak:pj,feePct:num(sale.feePct),fee:fe,status:'baru'}})}
+  return{sale:{...sale,items:own,sub:sub-ss,diskon:num(sale.diskon)-sd,pajak:num(sale.pajak)-sp,fee:num(sale.fee)-sf,net:num(sale.net)-sn,hpp:num(sale.hpp)-hm,titip},kirim}}
+async function kirimTitip(id,kirim){for(const k of kirim){if(!db||!db.lain)continue;await db.lain(k.u).doc('jualMitra/'+id).set(k.doc);S.mitraJm={...S.mitraJm,[k.u]:{...(S.mitraJm[k.u]||{}),[id]:k.doc}}}}
+let jmJalan=false;
+async function prosesJualMitra(){if(PERAN!=='owner'||!db||jmJalan)return;const td=Object.entries(S.jualMitra).filter(([,j])=>j.status==='baru');if(!td.length)return;jmJalan=true;let n=0;
+  try{for(const[id,j] of td){if(db.klaim&&!(await db.klaim(id,'jualMitra')))continue;
+      const items=(j.items||[]).map(i=>({...i,hpp:hppPakai(i.use||{})})),hpp=items.reduce((a,i)=>a+i.hpp*i.qty,0);
+      await put('sales','mt'+id,{ts:j.ts,channel:j.channel,pemesan:j.pemesan||'',items,sub:num(j.sub),diskon:num(j.diskon),pajak:num(j.pajak),feePct:num(j.feePct),fee:num(j.fee),net:num(j.sub)-num(j.diskon)-num(j.fee),hpp,kemas:{use:{},hpp:0},bayar:0,cara:j.cara||'',kasir:'via '+(j.dariNama||'toko mitra')+(j.kasir?' ('+j.kasir+')':''),viaMitra:j.dariNama||'toko mitra',mitra:j.dari||''});
+      const tot={};items.forEach(i=>{for(const x in i.use||{})tot[x]=(tot[x]||0)+i.use[x]*i.qty});for(const x in tot){const p=S.products[x];if(p&&!X(x))await put('products',x,{...p,stock:r2(p.stock-tot[x])})}
+      await ubahDoc('jualMitra',id,{status:'selesai',tsProses:Date.now()});n++}
+    sinkMitra();if(n)toast(n+' penjualan menu lewat toko mitra masuk laporan')}finally{jmJalan=false;render()}}
 function renderPeran(){renderMitra();jadwalMitra();
   $('#pemesan').placeholder=PERAN==='kasir'?'Wajib diisi, misalnya Budi / meja 3':'Opsional, misalnya Budi / meja 3';
   if(PERAN==='kasir'){const h0=new Date().setHours(0,0,0,0),js=Object.entries(S.jual).filter(([,j])=>j.kasirUid===SAYA.uid&&j.ts>=h0).sort((a,b)=>b[1].ts-a[1].ts),sm=f=>js.filter(([,j])=>!j.batal&&f(j)).reduce((a,[,j])=>a+tagihS(j),0);
@@ -966,7 +1008,7 @@ const stab=o=>Array.isArray(o)?'['+o.map(stab).join(',')+']':o&&typeof o==='obje
 let pubT=null;function jadwalPublik(){if(PERAN!=='owner'||!db||!db.rootDoc||!(Object.keys(S.anggota).length||Object.keys(S.kodeKasir).length))return;clearTimeout(pubT);pubT=setTimeout(sinkPublik,1500)}
 function sinkPublik(){if(PERAN!=='owner'||!db||!db.rootDoc||!(Object.keys(S.anggota).length||Object.keys(S.kodeKasir).length))return 0;const st=S.settings,w={stok:{},publik:{}};let n=0;
   for(const [id,p] of Object.entries(S.products))w.stok[id]={name:p.name,unit:p.unit||'',stock:r2(p.stock),min:num(p.min),jenis:p.jenis||'bahan'};
-  for(const [id,m] of Object.entries(S.menus))w.publik['m_'+id]={name:m.name,kind:m.kind||'alacarte',kategori:m.kategori||'lain',kemasKat:m.kemasKat!==false,comps:(m.comps||[]).map(c=>({t:c.t,id:c.id,qty:num(c.qty),porsi:num(c.porsi)||1})),optGroups:grupPil(m).map(g=>({name:g.name,opts:g.opts.map(op=>({label:op.label||'',...opRef(op),qty:op.qty===''||op.qty==null?1:num(op.qty),add:num(op.add)}))})),ext:m.ext||{},sembunyi:!!m.sembunyi,base:menuBase(m)};
+  for(const [id,m] of Object.entries(S.menus))w.publik['m_'+id]={name:m.name,kind:m.kind||'alacarte',kategori:m.kategori||'lain',kemasKat:m.kemasKat!==false,comps:(m.comps||[]).map(c=>({t:c.t,id:c.id,qty:num(c.qty),porsi:num(c.porsi)||1})),optGroups:grupPil(m).map(g=>({name:g.name,opts:g.opts.map(op=>({label:op.label||'',...opRef(op),qty:op.qty===''||op.qty==null?1:num(op.qty),add:num(op.add)}))})),ext:m.ext||{},sembunyi:!!m.sembunyi,mitra:m.mitra||'',mitraNama:m.mitraNama||'',base:menuBase(m)};
   w.publik._set={toko:st.toko||'',pajak:num(st.pajak),bulat:B(),kertas:num(st.kertas)||58,kaki:st.kaki||'',tema:st.tema||{},logoStruk:st.logoStruk!==false,watermark:!!st.watermark,kemasan:st.kemasan||[],kemasKat:st.kemasKat||{},ch:st.ch,qris:st.qris||''};
   w.publik._logo={data:S.logo||''};
   for(const col of ['stok','publik']){for(const id in w[col])if(stab(w[col][id])!==stab(S[col][id])){db.doc(col+'/'+id).set(w[col][id]);S[col]={...S[col],[id]:JSON.parse(JSON.stringify(w[col][id]))};n++}
@@ -977,9 +1019,10 @@ async function prosesJualKasir(){if(PERAN!=='owner'||!db||memproses)return;const
   try{for(const [id,j] of tunda){if(j.batal){sel.push(id);continue}if(!j.diproses){if(db.klaim&&!(await db.klaim(id)))continue;
       const items=(j.items||[]).map(i=>({...i,hpp:hppPakai(i.use||{})})),ku=(j.kemas||{}).use||{},kh=hppPakai(ku),hpp=items.reduce((a,i)=>a+i.hpp*i.qty,0)+kh;
       const dasar=j.sub-(j.diskon||0),fee=dasar*num(j.feePct)/100;
-      await put('sales',id,{ts:j.ts,channel:j.channel,pemesan:j.pemesan||'',items,sub:j.sub,diskon:j.diskon||0,pajak:j.pajak||0,feePct:num(j.feePct),fee,net:dasar-fee,hpp,kemas:{use:ku,hpp:kh},bayar:j.bayar||0,cara:j.cara||'',kasir:j.kasirNama||'',kasirUid:j.kasirUid||'',jualId:id});
+      const ps=pisahTitip({ts:j.ts,channel:j.channel,pemesan:j.pemesan||'',items,sub:j.sub,diskon:j.diskon||0,pajak:j.pajak||0,feePct:num(j.feePct),fee,net:dasar-fee,hpp,kemas:{use:ku,hpp:kh},bayar:j.bayar||0,cara:j.cara||'',kasir:j.kasirNama||'',kasirUid:j.kasirUid||'',jualId:id});
+      await put('sales',id,ps.sale);await kirimTitip(id,ps.kirim);
       const tot={};items.forEach(i=>{for(const x in i.use||{})tot[x]=(tot[x]||0)+i.use[x]*i.qty});for(const x in ku)tot[x]=(tot[x]||0)+ku[x];
-      for(const x in tot){const p=S.products[x];if(p)await put('products',x,{...p,stock:r2(p.stock-tot[x])})}}
+      for(const x in tot){const p=S.products[x];if(p&&!X(x))await put('products',x,{...p,stock:r2(p.stock-tot[x])})}}
     sel.push(id)}
     sinkPublik();for(const id of sel){const j=S.jual[id];if(j)await ubahDoc('jual',id,{diproses:true,stokOk:true,saleId:j.batal?'':id,tsProses:j.tsProses||Date.now()})}
     {const nb=sel.filter(id=>!(S.jual[id]||{}).batal).length;if(nb)toast(nb+' penjualan kasir masuk laporan')}}finally{memproses=false;render()}}
@@ -1062,8 +1105,8 @@ const A={
     if(PERAN==='kasir'){jualKasir(n,ch);return}
     run(async()=>{const tot={};n.items.forEach(i=>{for(const id in i.use)tot[id]=(tot[id]||0)+i.use[id]*i.qty});for(const id in n.kemas.use)tot[id]=(tot[id]||0)+n.kemas.use[id];
       const pid=prosesId,sale={ts:Date.now(),channel:ch,pemesan:$('#pemesan').value.trim(),items:n.items,sub:n.sub,pajak:n.pajak,feePct:n.feePct,fee:n.fee,net:n.net,hpp:n.hpp,kemas:n.kemas,diskon:n.disk,bayar:ch==='offline'&&cara!=='qris'?num($('#bayar').value):0,cara:ch==='offline'?cara:''};
-      const sid=newId();await put('sales',sid,sale);if(pid&&S.pesanan[pid]){sale.pesananId=pid;await put('pesanan',pid,{...S.pesanan[pid],status:'diterima',saleId:sid,tsProses:Date.now()})}
-      for(const id in tot){const p=S.products[id];if(p)await put('products',id,{...p,stock:r2(p.stock-tot[id])})}
+      const sid=newId(),ps=pisahTitip(sale);await put('sales',sid,ps.sale);await kirimTitip(sid,ps.kirim);if(pid&&S.pesanan[pid]){sale.pesananId=pid;await put('pesanan',pid,{...S.pesanan[pid],status:'diterima',saleId:sid,tsProses:Date.now()})}
+      for(const id in tot){const p=S.products[id];if(p&&!X(id))await put('products',id,{...p,stock:r2(p.stock-tot[id])})}
       cart={};kemasDelta={};if(pid)chan='offline';prosesId=null;$('#pemesan').value='';$('#bayar').value='';$('#diskon').value='';cara='tunai';akhir=sale;toast('Transaksi tersimpan · laba '+rp(n.laba));if(!DI_CLAUDE)bukaStruk(sale)})},
   batalJual(id){const ka=Object.keys(S.arsip).find(k=>S.arsip[k][id]),x=S.sales[id]||(ka&&S.arsip[ka][id]);if(!x||x.batal)return;
     $('#btJudul').textContent='Batalkan penjualan';$('#btKirim').textContent='Batalkan dan catat';$('#btInfo').textContent=waktu(x.ts)+' · '+(x.pemesan||'')+' · '+rp(tagihS(x))+'. Stok dikembalikan; penjualan tetap tercatat di daftar pembatalan.';$('#dlgB').dataset.id=id;$('#dlgB').dataset.mode='owner';$('#bt-alasan').value='';$('#dlgB').showModal()},
@@ -1255,7 +1298,7 @@ $('#dlgMForm').addEventListener('submit',e=>{e.preventDefault();sinkM();const na
   const id=editM||newId();$('#dlgM').close();cart={};run(async()=>{await put('menus',id,{...m,name,kind:$('#m-kind').value});toast('Menu tersimpan')})});
 // ---------- cetak struk: dialog sistem / Bluetooth BLE (ESC/POS) / RawBT ----------
 const cetakMode=()=>{try{return localStorage.getItem('kg-cetak')||'dialog'}catch(e){return'dialog'}};
-function escpos(s){const st=S.settings,W=(num(st.kertas)||58)>=80?48:32,o=[];
+function escpos(s){s=gabungStruk(s);const st=S.settings,W=(num(st.kertas)||58)>=80?48:32,o=[];
   const asc=t=>String(t==null?'':t).normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^\x20-\x7e]/g,'?');
   const tx=t=>{t=asc(t);for(let i=0;i<t.length;i++)o.push(t.charCodeAt(i));o.push(10)};
   const wrap=t=>{t=asc(t);while(t.length>W){tx(t.slice(0,W));t=t.slice(W)}tx(t)};
@@ -1314,7 +1357,7 @@ async function simpanFile(nama,blob){
   if(DI_CLAUDE){const d=await window.claude.use('downloads');if(!d){toast('Unduhan tidak tersedia di tampilan ini.');return}
     try{await d.save({filename:nama,data:blob});toast('File disimpan')}catch(e){if(!e||e.code!=='declined')toast('Gagal mengunduh file.')}return}
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=nama;document.body.appendChild(a);a.click();a.remove();toast('File diunduh')}
-function bukaStruk(s){const st=S.settings,a=n=>Math.round(n||0).toLocaleString('id-ID'),tagih=tagihS(s);
+function bukaStruk(s){const s0=s;s=gabungStruk(s);const st=S.settings,a=n=>Math.round(n||0).toLocaleString('id-ID'),tagih=tagihS(s);
   const lg=S.logo;let h=`<div class="struk">${lg&&st.watermark?`<img class="wm" src="${lg}" alt="">`:''}${lg&&st.logoStruk!==false?`<img class="logo" src="${lg}" alt="Logo ${esc(st.toko||'')}">`:''}<div class="c b">${esc(st.toko||'Toko')}</div><div class="c">${new Date(s.ts).toLocaleString('id-ID',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}</div><div class="c">${s.channel==='offline'?'':esc(CH[s.channel]||'')}</div><hr>`;
   h+=(s.pemesan?`<div>Pemesan: ${esc(s.pemesan)}</div>`:'')+(s.kasir||s.kasirNama?`<div>Kasir: ${esc(s.kasir||s.kasirNama)}</div>`:'')+(s.pemesan||s.kasir||s.kasirNama?'<hr>':'')+s.items.map(i=>`<div>${esc(i.name)}</div><div class="sr"><span>${nf(i.qty)} x ${a(i.price)}</span><span>${a(i.price*i.qty)}</span></div>`).join('');
   if(s.batal)h+=`<hr><div class="c b">DIBATALKAN</div><div class="c">${esc(s.batal.alasan||'')}</div>`;
@@ -1325,7 +1368,7 @@ function bukaStruk(s){const st=S.settings,a=n=>Math.round(n||0).toLocaleString('
   if(s.cara==='qris')h+=`<div class="sr"><span>Bayar</span><span>QRIS</span></div>`;
   if(s.bayar>0)h+=`<div class="sr"><span>Bayar</span><span>${a(s.bayar)}</span></div><div class="sr"><span>Kembali</span><span>${a(Math.max(s.bayar-tagih,0))}</span></div>`;
   h+=`<hr><div class="c">${esc(st.kaki||'')}</div></div>`;
-  strukNow=s;$('#strukBox').innerHTML=h;$('#btnCetak').hidden=DI_CLAUDE;$('#strukHint').hidden=!DI_CLAUDE;$('#dlgS').showModal()}
+  strukNow=s0;$('#strukBox').innerHTML=h;$('#btnCetak').hidden=DI_CLAUDE;$('#strukHint').hidden=!DI_CLAUDE;$('#dlgS').showModal()}
 $('#dlgMapForm').addEventListener('submit',e=>{e.preventDefault();const id=mapTunda,p=S.pesanan[id];if(!p)return;
   const sel=[...document.querySelectorAll('#mapRows select')];if(sel.some(x=>!x.value)){toast('Pilih menu untuk semua nama');return}
   $('#dlgMap').close();mapTunda=null;
@@ -1408,7 +1451,7 @@ function boot(){
     $('#l-err').textContent='';(daftar?auth.createUserWithEmailAndPassword(em,pw):auth.signInWithEmailAndPassword(em,pw)).catch(e=>{$('#l-err').textContent=AERR[e.code]||'Gagal masuk ('+(e.code||'tidak diketahui')+').'})};
   $('#loginForm').addEventListener('submit',e=>{e.preventDefault();masuk(false)});$('#l-daftar').addEventListener('click',()=>masuk(true));
   let unsub=[];
-  const KOLO=['products','menus','purchases','sales','pesanan','biaya','stokLog','kasir','jual','anggota','kodeKasir','stok','publik','rekap','habis','mitra','transfer','stokMitra'];
+  const KOLO=['products','menus','purchases','sales','pesanan','biaya','stokLog','kasir','jual','anggota','kodeKasir','stok','publik','rekap','habis','mitra','transfer','stokMitra','jualMitra','menuMitra'];
   const kosong=()=>{KOLO.concat(['integrasi']).forEach(c=>S[c]={});S.gambar='';S.logo='';S.settings=mergeSet({})};
   const buatDb=(uid,base)=>({doc:p=>{const r=fs.doc(base+p);return{update:d=>{r.update(d).catch(gagal);return Promise.resolve()},set:d=>{r.set(d).catch(gagal);return Promise.resolve()},delete:()=>{r.delete().catch(gagal);return Promise.resolve()},onSnapshot:(a,b)=>r.onSnapshot(a,b)}},collection:c=>fs.collection(base+c),
     rootDoc:p=>{const r=fs.doc(p);return{set:d=>{r.set(d).catch(gagal);return Promise.resolve()},delete:()=>{r.delete().catch(gagal);return Promise.resolve()}}},
@@ -1427,21 +1470,24 @@ function boot(){
     if(col==='pesanan')return c.where('ts','>=',now-14*864e5).orderBy('ts','desc');
     if(['purchases','biaya','stokLog'].includes(col))return c.orderBy('ts','desc').limit(5000);
     if(col==='kasir')return c.orderBy('ts','desc').limit(400);
-    if(col==='transfer')return c.orderBy('ts','desc').limit(3000);
+    if(col==='transfer'||col==='jualMitra')return c.orderBy('ts','desc').limit(3000);
     return c.limit(3000)};
   const langgan=(cols,setelah)=>cols.forEach(col=>{const q=kueri(col);
-    unsub.push(q.onSnapshot(s=>{if(busy&&!['jual','mitra','transfer'].includes(col))return;const o={};s.docs.forEach(x=>o[x.id]=x.data());S[col]=o;if(setelah)setelah(col);render()},onErr))});
+    unsub.push(q.onSnapshot(s=>{if(busy&&!['jual','mitra','transfer','jualMitra'].includes(col))return;const o={};s.docs.forEach(x=>o[x.id]=x.data());S[col]=o;if(setelah)setelah(col);render()},onErr))});
   const tampil=w=>{$('#login').hidden=w!=='login';$('#tunggu').hidden=w!=='tunggu';$('#app').hidden=w!=='app'};
   function mulaiOwner(u){PERAN='owner';document.body.classList.remove('kasir');const base='toko/'+u.uid+'/';db=buatDb(u.uid,base);
     simpanRahasia=(k,val)=>{const ref=fs.doc('kunci/'+u.uid+'/platform/'+k);ref.set({rahasia:val,ts:Date.now()}).then(()=>ref.get({source:'server'})).then(()=>toast('PERINGATAN: kunci rahasia masih bisa dibaca dari aplikasi. Aturan Firestore belum benar.'),e=>{if(e&&e.code==='permission-denied')toast('Kunci tersimpan dan terverifikasi tidak bisa dibaca dari aplikasi.');else gagal(e)});return Promise.resolve()};
     unsub.push(db.collection('integrasi').onSnapshot(s=>{const o={};s.docs.forEach(x=>o[x.id]=x.data());S.integrasi=o;render()},onErr));
     mode='cloud';tampil('app');
-    let pT=null,tT2=null,mUn={};
+    let pT=null,tT2=null,tT3=null,mUn={};
     const langMitra=()=>{const ada=Object.keys(S.mitra);Object.keys(mUn).forEach(t=>{if(!ada.includes(t)){mUn[t].forEach(f=>f());delete mUn[t];const a={...S.mitraStok};delete a[t];S.mitraStok=a}});
       ada.forEach(t=>{if(mUn[t])return;mUn[t]=[fs.collection('toko/'+t+'/stokMitra').limit(3000).onSnapshot(q=>{const o={};q.docs.forEach(x=>o[x.id]=x.data());S.mitraStok={...S.mitraStok,[t]:o};render()},()=>{}),
-        fs.collection('toko/'+t+'/transfer').where('status','==','baru').onSnapshot(q=>{const o={};q.docs.forEach(x=>o[x.id]=x.data());S.mitraTf={...S.mitraTf,[t]:o};render()},()=>{})];unsub.push(()=>{(mUn[t]||[]).forEach(f=>f());delete mUn[t]})})};
+        fs.collection('toko/'+t+'/transfer').where('status','==','baru').onSnapshot(q=>{const o={};q.docs.forEach(x=>o[x.id]=x.data());S.mitraTf={...S.mitraTf,[t]:o};render()},()=>{}),
+        fs.collection('toko/'+t+'/menuMitra').limit(2000).onSnapshot(q=>{const o={};q.docs.forEach(x=>o[x.id]=x.data());S.mitraMenu={...S.mitraMenu,[t]:o};render()},()=>{}),
+        fs.collection('toko/'+t+'/jualMitra').where('status','==','baru').onSnapshot(q=>{const o={};q.docs.forEach(x=>o[x.id]=x.data());S.mitraJm={...S.mitraJm,[t]:o};render()},()=>{})];unsub.push(()=>{(mUn[t]||[]).forEach(f=>f());delete mUn[t]})})};
     langgan(KOLO,col=>{if(col==='jual'||col==='products'){clearTimeout(pT);pT=setTimeout(()=>{if(navigator.onLine)prosesJualKasir()},800)}
-      if(col==='transfer'||col==='products'){clearTimeout(tT2);tT2=setTimeout(()=>{if(navigator.onLine)prosesTransfer()},900)}if(col==='mitra')langMitra()});db.langMitra=langMitra;
+      if(col==='transfer'||col==='products'){clearTimeout(tT2);tT2=setTimeout(()=>{if(navigator.onLine)prosesTransfer()},900)}
+      if(col==='jualMitra'||col==='products'){clearTimeout(tT3);tT3=setTimeout(()=>{if(navigator.onLine)prosesJualMitra()},1000)}if(col==='mitra')langMitra()});db.langMitra=langMitra;
     unsub.push(db.doc('settings/main').onSnapshot(s=>{if(s.exists){S.settings=mergeSet(s.data());fillSettings()}render()},onErr));
     ['gambar','logo'].forEach(k=>unsub.push(db.doc('settings/'+k).onSnapshot(s=>{S[k]=s.exists?(s.data().data||''):'';render()},onErr)));
     setTimeout(bangunRekap,5000);render()}
