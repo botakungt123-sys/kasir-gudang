@@ -208,6 +208,17 @@ dialog form{display:flex;flex-direction:column;gap:12px}
       <p class="hint">Untuk bahan yang dibuat sendiri sekali banyak, misalnya sambal, bumbu ungkep, atau ayam marinasi. Tekan Produksi setiap kali membuat: bahan mentahnya berkurang dan stok bahan olahan bertambah dengan HPP dari resep. Bahan olahan dipakai di isi menu seperti bahan lain.</p>
       <div class="tw"><table><thead><tr><th>Barang</th><th>Status</th><th class="r">Stok</th><th>Satuan</th><th>Resep sekali produksi</th><th class="r">HPP per satuan</th><th class="r">Nilai stok</th><th></th></tr></thead><tbody id="tOlahan"></tbody></table></div>
     </div>
+    <div class="panel oo" id="panelAmbil" hidden>
+      <h2>Ambil stok dari toko mitra</h2>
+      <p class="hint">Barang pindah dengan harga HPP toko asal: stok toko asal berkurang, stok toko ini bertambah, dan tercatat di laporan kedua toko. Stok toko asal dipotong saat aplikasi toko asal online.</p>
+      <div class="row"><label>Dari toko<select id="tf-mitra"></select></label><label style="flex:2 1 200px">Barang di toko mitra<select id="tf-barang"></select></label><label>Jumlah<input id="tf-qty" type="number" inputmode="decimal" min="0" step="any"></label></div>
+      <div class="row"><label style="flex:2 1 200px">Masuk ke barang di toko ini<select id="tf-tujuan"></select></label><label style="flex:2 1 160px">Catatan<input id="tf-note" type="text" placeholder="Opsional"></label></div>
+      <div class="row" style="justify-content:space-between"><p class="hint num" id="tf-prev"></p><button class="btn primary" data-act="ambilStok">Ambil stok</button></div>
+    </div>
+    <div class="panel oo" id="panelTf" hidden>
+      <h2>Riwayat transfer antar toko</h2>
+      <div class="tw"><table><thead><tr><th>Waktu</th><th>Arah</th><th>Barang</th><th class="r">Jumlah</th><th class="r">HPP/satuan</th><th class="r">Nilai</th><th>Status</th><th>Catatan</th></tr></thead><tbody id="tTf"></tbody></table></div>
+    </div>
     <div class="panel oo">
       <h2>Stok opname dan barang terbuang</h2>
       <p class="hint">Barang terbuang (basi, tumpah, rusak, salah masak) mengurangi stok dan dihitung sebagai rugi di laporan. Hitung ulang stok fisik menyamakan stok aplikasi dengan isi gudang; selisihnya juga masuk laporan.</p>
@@ -311,6 +322,12 @@ dialog form{display:flex;flex-direction:column;gap:12px}
       <div class="tiles" id="tilesModal"></div>
       <p class="hint">Modal awal otomatis = semua uang yang sudah dibayarkan untuk belanja stok; pembelian kredit baru dihitung setelah ditandai lunas, dan sementara itu tampil sebagai utang ke pemasok. Jadi perkiraan kas = uang bersih dari penjualan. Matikan centang di Pengaturan bila modal awal ingin diisi sendiri; perkiraan kas lalu = modal awal − belanja yang sudah dibayar + uang bersih dari penjualan. Biaya operasional yang dicatat di Pembelian ikut mengurangi perkiraan kas.</p>
     </div>
+    <div class="panel" id="panelTfLap" hidden>
+      <h2>Transfer stok antar toko</h2>
+      <div class="tiles" id="tilesTf"></div>
+      <div class="tw"><table><thead><tr><th>Waktu</th><th>Arah</th><th>Barang</th><th class="r">Jumlah</th><th class="r">Nilai (HPP)</th><th>Status</th></tr></thead><tbody id="tTfLap"></tbody></table></div>
+      <p class="hint">Transfer memindahkan modal stok antartoko dengan harga HPP, tidak mengubah laba. Nilai masuk dikurangi nilai keluar = selisih yang bisa diselesaikan antartoko.</p>
+    </div>
     <div class="panel" id="panelBatalLog" hidden>
       <h2>Penjualan yang dibatalkan</h2>
       <div class="tw"><table><thead><tr><th>Waktu jual</th><th>Saluran</th><th>Pemesan</th><th>Isi</th><th class="r">Nilai</th><th>Alasan</th><th>Dibatalkan oleh</th><th></th></tr></thead><tbody id="tBatal"></tbody></table></div>
@@ -347,6 +364,14 @@ dialog form{display:flex;flex-direction:column;gap:12px}
         <label>Target margin menu baru (%)<input id="s-margin" type="number" inputmode="decimal" min="0" max="99" step="any"></label>
       </div>
       <p class="hint">Pajak ditambahkan ke tagihan pelanggan untuk penjualan langsung dan tidak dihitung sebagai pendapatan. Isi 0 jika tidak memungut.</p>
+    </div>
+    <div class="panel oo" id="panelMitra" hidden>
+      <h2>Toko mitra (transfer stok)</h2>
+      <p class="hint">Hubungkan dua akun toko milik Anda supaya bisa saling mengambil stok. Di toko pertama tekan Buat kode mitra, lalu di toko kedua masukkan kode itu. Setelah terhubung, kedua toko bisa melihat stok dan HPP satu sama lain dan mengambil barang lewat tab Gudang.</p>
+      <div class="row" style="align-items:flex-end"><button type="button" class="btn" data-act="buatKodeMitra">Buat kode mitra</button><span>Kode: <b class="num" id="kodeMitra" style="font-size:18px;letter-spacing:2px">–</b></span></div>
+      <div class="row"><label style="flex:1 1 180px">Masukkan kode dari toko lain<input id="mt-kode" type="text" maxlength="9" autocomplete="off" style="text-transform:uppercase;letter-spacing:2px" placeholder="XXXX-XXXX"></label><button type="button" class="btn primary" data-act="hubungkanMitra">Hubungkan</button></div>
+      <span class="sec">Toko terhubung</span>
+      <div class="stack" id="mitraBox" style="gap:8px"></div>
     </div>
     <div class="panel oo" id="panelKasir" hidden>
       <h2>Akun kasir</h2>
@@ -505,13 +530,13 @@ dialog form{display:flex;flex-direction:column;gap:12px}
 <script>
 const CH={offline:'Langsung',gofood:'GoFood',grabfood:'GrabFood',shopeefood:'ShopeeFood'};
 const DEF={toko:'Toko Saya',modalAwal:0,modalAuto:true,pajak:0,margin:40,bulat:500,kertas:58,kaki:'Terima kasih',tema:{preset:'bawaan',lapisan:70},logoStruk:true,watermark:false,kemasan:[],kemasKat:{makanan:[],minuman:[]},ch:{gofood:{fee:20,markup:0,auto:true},grabfood:{fee:20,markup:0,auto:true},shopeefood:{fee:20,markup:0,auto:true}}};
-const S={gambar:'',logo:'',products:{},menus:{},pesanan:{},integrasi:{},purchases:{},sales:{},biaya:{},stokLog:{},kasir:{},jual:{},anggota:{},kodeKasir:{},rekap:{},arsip:{},habis:{},stok:{},publik:{},settings:JSON.parse(JSON.stringify(DEF))};
+const S={gambar:'',logo:'',products:{},menus:{},pesanan:{},integrasi:{},purchases:{},sales:{},biaya:{},stokLog:{},kasir:{},jual:{},anggota:{},kodeKasir:{},rekap:{},arsip:{},habis:{},mitra:{},transfer:{},mitraStok:{},mitraTf:{},stokMitra:{},stok:{},publik:{},settings:JSON.parse(JSON.stringify(DEF))};
 const LS='kasir-gudang-v1';
 let cara='tunai',qrisSiap=false;
 let katPilih='semua',modeHabis=false,PERAN='owner',SAYA={uid:'',nama:'',email:''},pilihM=null,olId=null,olRows=[],prId=null;
 const BIAYA={gas:'Gas',listrik:'Listrik',air:'Air',sewa:'Sewa tempat',gaji:'Gaji / upah',transport:'Transport / bensin',internet:'Internet & pulsa',perawatan:'Perawatan / perbaikan',promosi:'Iklan / promosi',lain:'Lainnya'};
 const ALASAN={basi:'Basi / kedaluwarsa',tumpah:'Tumpah / jatuh',rusak:'Rusak',salah:'Salah masak / retur',pakai:'Dipakai sendiri / karyawan',lain:'Lainnya',koreksi:'Koreksi lewat Ubah barang'};
-const JLOG={buang:'Terbuang',opname:'Stok opname',produksi:'Produksi'};
+const JLOG={buang:'Terbuang',opname:'Stok opname',produksi:'Produksi',transfer:'Transfer antar toko'};
 const habisHari=id=>((S.habis||{})[id]||{}).tgl===hariIni();
 const tagihS=s=>s.sub-(s.diskon||0)+(s.pajak||0);
 const BLN=['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
@@ -803,7 +828,7 @@ function render(){
   $('#tOlahan').innerHTML=pO.length?pO.map(p=>{const s=statusStok(p),r=p.resep||{};return`<tr><td class="wrapc"><b>${esc(p.name)}</b></td><td><span class="pill ${s}">${LBL[s]}</span></td><td class="r">${nf(p.stock)}</td><td>${esc(p.unit||'')}</td><td class="wrapc">${'hasil '+nf(r.hasil)+' '+esc(p.unit||'')+' dari '+esc((r.comps||[]).map(c=>nf(c.qty)+' '+((S.products[c.pid]||{}).unit||'')+' '+((S.products[c.pid]||{}).name||'(dihapus)')).join(', '))}</td><td class="r">${rp(p.cost)}</td><td class="r">${rp(Math.max(p.stock,0)*(p.cost||0))}</td><td><button class="btn sm primary" data-act="produksi" data-id="${p.id}">Produksi</button> <button class="btn sm" data-act="ubah" data-id="${p.id}">Ubah</button></td></tr>`}).join(''):'<tr><td colspan="8"><p class="empty">Belum ada bahan olahan. Contoh: sambal dibuat 1 kg sekali masak dari cabai, bawang, minyak.</p></td></tr>';
   {const sp=$('#so-prod'),cv=sp.value;sp.innerHTML=ps.length?ps.map(p=>`<option value="${p.id}">${esc(p.name)} (stok ${nf(p.stock)} ${esc(p.unit||'')})</option>`).join(''):'<option value="">Belum ada barang</option>';if(cv&&S.products[cv])sp.value=cv;prevStok()
    const lg=Object.entries(S.stokLog).sort((a,b)=>b[1].ts-a[1].ts);
-   $('#tStokLog').innerHTML=lg.length?lg.slice(0,200).map(([id,l])=>`<tr><td>${waktu(l.ts)}</td><td class="wrapc">${esc(l.name)}</td><td>${JLOG[l.jenis]||l.jenis}</td><td class="r">${l.qty>0?'+':''}${nf(l.qty)} ${esc(l.unit||'')}</td><td class="r">${l.jenis==='produksi'?rp(l.biaya):rp(l.nilai)}</td><td class="wrapc">${esc(l.jenis==='produksi'?nf(l.kali)+'× resep, bahan '+Object.entries(l.pakai||{}).map(([k,q])=>nf(q)+' '+((S.products[k]||{}).name||'')).join(', '):[ALASAN[l.alasan]||'',l.note||''].filter(Boolean).join(' · '))}</td><td><button class="btn sm danger" data-act="batalStok" data-id="${id}" data-confirm="1">Batalkan</button></td></tr>`).join(''):'<tr><td colspan="7"><p class="empty">Belum ada catatan.</p></td></tr>'}
+   $('#tStokLog').innerHTML=lg.length?lg.slice(0,200).map(([id,l])=>`<tr><td>${waktu(l.ts)}</td><td class="wrapc">${esc(l.name)}</td><td>${JLOG[l.jenis]||l.jenis}</td><td class="r">${l.qty>0?'+':''}${nf(l.qty)} ${esc(l.unit||'')}</td><td class="r">${l.jenis==='produksi'?rp(l.biaya):rp(l.nilai)}</td><td class="wrapc">${esc(l.jenis==='produksi'?nf(l.kali)+'× resep, bahan '+Object.entries(l.pakai||{}).map(([k,q])=>nf(q)+' '+((S.products[k]||{}).name||'')).join(', '):[ALASAN[l.alasan]||'',l.note||''].filter(Boolean).join(' · '))}</td><td>${l.jenis==='transfer'?'':`<button class="btn sm danger" data-act="batalStok" data-id="${id}" data-confirm="1">Batalkan</button>`}</td></tr>`).join(''):'<tr><td colspan="7"><p class="empty">Belum ada catatan.</p></td></tr>'}
   $('#tGudang').innerHTML=pB.length?pB.map(rowG).join(''):'<tr><td colspan="8"><p class="empty">Belum ada bahan. Semua barang masuk dicatat di tab Pembelian.</p></td></tr>';
   $('#tKemas').innerHTML=pK.length?pK.map(rowG).join(''):'<tr><td colspan="8"><p class="empty">Belum ada kemasan. Saat beli barang baru, pilih Jenis: Kemasan (mika, cup, sedotan, kantong).</p></td></tr>';
 
@@ -852,6 +877,9 @@ function render(){
    $('#tMenuMargin').innerHTML=mg.length?mg.map(r=>`<tr><td class="wrapc"><b>${esc(r.nm)}</b></td><td class="r">${rp(r.h)}</td>${r.c.map(x=>`<td class="r" style="${x.p<.2?'color:var(--bad);font-weight:700':''}">${rp(x.l)}<br><small>${pct(x.l,x.harga)} dari ${rp(x.harga)}</small></td>`).join('')}</tr>`).join(''):'<tr><td colspan="6"><p class="empty">Belum ada menu.</p></td></tr>';
    const jm=Array(24).fill(0),jo=Array(24).fill(0);jl.forEach(([,s])=>{const h=new Date(s.ts).getHours();jm[h]++;jo[h]+=s.sub});const ad=jm.map((n,h)=>n?h:-1).filter(h=>h>=0),mx=Math.max(...jm,1);
    $('#jamRamai').innerHTML=ad.length?Array.from({length:ad[ad.length-1]-ad[0]+1},(_,k)=>ad[0]+k).map(h=>`<div class="row" style="gap:8px;flex-wrap:nowrap;align-items:center"><span class="num" style="width:48px;flex:none;font-size:12px">${String(h).padStart(2,'0')}:00</span><div style="flex:1;background:var(--line);border-radius:4px;height:14px;min-width:40px"><div style="width:${jm[h]/mx*100}%;background:var(--accent);height:100%;border-radius:4px"></div></div><span class="num" style="flex:none;font-size:12px;min-width:110px;text-align:right">${jm[h]} trx · ${rp(jo[h])}</span></div>`).join(''):'<p class="hint">Belum ada penjualan di periode ini.</p>'}
+  {const tl=Object.values(S.transfer).filter(t=>t.ts>=PD.a&&t.ts<PD.b).sort((a,b)=>b.ts-a.ts),vm=tl.filter(t=>t.arah==='masuk').reduce((a,t)=>a+t.qty*t.cost,0),vk=tl.filter(t=>t.arah==='keluar').reduce((a,t)=>a+t.qty*t.cost,0);
+   $('#panelTfLap').hidden=!tl.length;$('#tilesTf').innerHTML=tile('Masuk dari mitra',rp(vm),tl.filter(t=>t.arah==='masuk').length+' transfer')+tile('Keluar ke mitra',rp(vk),tl.filter(t=>t.arah==='keluar').length+' transfer')+tile('Selisih',rp(vm-vk),vm>vk?'toko ini menerima lebih banyak':vm<vk?'toko ini memberi lebih banyak':'seimbang');
+   $('#tTfLap').innerHTML=tl.map(t=>`<tr><td>${waktu(t.ts)}</td><td>${t.arah==='masuk'?'Masuk dari '+esc(t.dariNama||namaMitra(t.dari)):'Keluar ke '+esc(t.keNama||namaMitra(t.ke))}</td><td class="wrapc">${esc(t.name)}</td><td class="r">${nf(t.qty)} ${esc(t.unit||'')}</td><td class="r">${rp(t.qty*t.cost)}</td><td>${t.status==='baru'?'Menunggu diproses':'Selesai'}</td></tr>`).join('')}
   $('#panelBatalLog').hidden=!JB.length;$('#tBatal').innerHTML=JB.map(([id,x])=>`<tr><td>${waktu(x.ts)}</td><td>${CH[x.channel]||x.channel}</td><td class="wrapc">${esc(x.pemesan||'')}${x.kasir?'<br><small>kasir '+esc(x.kasir)+'</small>':''}</td><td class="wrapc">${esc(x.items.map(i=>nf(i.qty)+'× '+i.name).join(', '))}</td><td class="r">${rp(tagihS(x))}</td><td class="wrapc">${esc(x.batal.alasan||'')}</td><td class="wrapc">${esc(x.batal.diminta?'diminta '+x.batal.diminta+', disetujui '+(x.batal.oleh||'owner'):(x.batal.oleh||'owner'))}<br><small>${waktu(x.batal.ts)}</small></td><td><button class="btn sm" data-act="struk" data-id="${id}">Struk</button></td></tr>`).join('');
   $('#tJual').innerHTML=jl.length?jl.slice(0,200).map(([id,s])=>`<tr><td>${waktu(s.ts)}</td><td>${CH[s.channel]||s.channel}</td><td class="wrapc">${s.pemesan?'<b>'+esc(s.pemesan)+'</b> · ':''}${s.kasir?'<small>kasir '+esc(s.kasir)+'</small> · ':''}${s.cara==='qris'?'<span class="pill ok">QRIS</span> ':''}${esc(s.items.map(i=>nf(i.qty)+'× '+i.name).join(', '))}</td><td class="r">${rp(s.sub)}</td><td class="r">${rp(-s.fee)}</td><td class="r">${rp(s.net)}</td><td class="r">${rp(s.net-s.hpp)}</td><td><button class="btn sm" data-act="struk" data-id="${id}">Struk</button> <button class="btn sm danger" data-act="batalJual" data-id="${id}">Batalkan</button></td></tr>`).join('')
     :'<tr><td colspan="8"><p class="empty">Belum ada penjualan di periode ini.</p></td></tr>';
@@ -880,7 +908,38 @@ function kasHari(tgl){const a=new Date(tgl+'T00:00:00').getTime(),b=a+864e5,inR=
   const bT=Object.values(S.biaya).filter(x=>inR(x.ts)&&(x.cara||'tunai')==='tunai').reduce((x,y)=>x+num(y.jumlah),0);
   const pT=Object.values(S.purchases).filter(p=>p.bayar!=='kredit'&&(p.cara||'tunai')==='tunai'&&inR(p.lunasTs||p.ts)).reduce((x,p)=>x+num(p.total),0);
   const modal=num(d.modal),keluar=potong?bT+pT:0;return{d,modal,tunai,qris,app,bT,pT,potong,keluar,harus:modal+tunai-keluar,n:jl.length,nT:lg.filter(s=>s.cara!=='qris').length}}
-function renderPeran(){
+const namaMitra=u=>((S.mitra[u]||{}).nama||(S.mitra[u]||{}).email||'toko mitra');
+// stok mitra yang masih tersedia = cermin stok mitra − transfer keluar yang belum diproses toko itu
+function stokTersediaMitra(u){const o={},pend={};Object.values(S.mitraTf[u]||{}).filter(t=>t.arah==='keluar'&&t.status==='baru').forEach(t=>pend[t.pid]=(pend[t.pid]||0)+num(t.qty));
+  for(const [id,p] of Object.entries(S.mitraStok[u]||{}))o[id]={...p,stock:r2(num(p.stock)-(pend[id]||0))};return o}
+function isiAmbil(force){const ms=Object.keys(S.mitra);$('#panelAmbil').hidden=!ms.length||!(db&&db.rootDoc);if($('#panelAmbil').hidden)return;
+  const ae=document.activeElement;if(!force&&['tf-mitra','tf-barang','tf-tujuan'].includes(ae&&ae.id))return;
+  const sm=$('#tf-mitra'),cm=sm.value;sm.innerHTML=ms.map(u=>`<option value="${u}">${esc(namaMitra(u))}</option>`).join('');if(cm&&S.mitra[cm])sm.value=cm;
+  const st=stokTersediaMitra(sm.value),sb=$('#tf-barang'),cb=sb.value,ls=Object.entries(st).sort((a,b)=>a[1].name.localeCompare(b[1].name,'id'));
+  sb.innerHTML=ls.length?ls.map(([id,p])=>`<option value="${id}">${esc(p.name)} (tersedia ${nf(p.stock)} ${esc(p.unit||'')}, HPP ${rp(p.cost)})</option>`).join(''):'<option value="">Stok mitra belum terbaca. Buka aplikasi toko mitra sekali.</option>';if(cb&&st[cb])sb.value=cb;
+  const src=st[sb.value],st2=$('#tf-tujuan'),ct=st2.value,ps=prodList().filter(p=>p.jenis!=='olahan'),cocok=src?ps.find(p=>norm(p.name)===norm(src.name)):null;
+  st2.innerHTML='<option value="baru">Buat barang baru dengan nama yang sama</option>'+ps.map(p=>`<option value="${p.id}">${esc(p.name)} (stok ${nf(p.stock)} ${esc(p.unit||'')})</option>`).join('');
+  st2.value=ct&&(ct==='baru'||S.products[ct])&&st2.dataset.src===sb.value?ct:(cocok?cocok.id:'baru');st2.dataset.src=sb.value;prevAmbil()}
+function prevAmbil(){const u=$('#tf-mitra').value,src=stokTersediaMitra(u)[$('#tf-barang').value],q=num($('#tf-qty').value);
+  $('#tf-prev').textContent=src&&q>0?nf(q)+' '+(src.unit||'')+' × HPP '+rp(src.cost)+' = '+rp(q*src.cost)+(q>src.stock?' · melebihi stok tersedia ('+nf(src.stock)+')':''):''}
+function renderMitra(){const ada=!!(db&&db.rootDoc);$('#panelMitra').hidden=!ada;if(!ada)return;if(db.langMitra)db.langMitra();
+  $('#kodeMitra').textContent=S.settings.kodeMitra?S.settings.kodeMitra.slice(0,4)+'-'+S.settings.kodeMitra.slice(4):'–';
+  const ms=Object.entries(S.mitra);$('#mitraBox').innerHTML=ms.length?ms.map(([u,m])=>`<div class="row" style="justify-content:space-between;align-items:center"><span><b>${esc(m.nama||'')}</b> · ${esc(m.email||'')} · sejak ${waktu(m.ts)}</span><button type="button" class="btn sm danger" data-act="putusMitra" data-id="${u}" data-confirm="1">Putuskan</button></div>`).join(''):'<p class="hint">Belum ada toko terhubung.</p>';
+  isiAmbil();
+  const tf=Object.entries(S.transfer).sort((a,b)=>b[1].ts-a[1].ts);$('#panelTf').hidden=!tf.length;
+  $('#tTf').innerHTML=tf.slice(0,200).map(([id,t])=>`<tr><td>${waktu(t.ts)}</td><td>${t.arah==='masuk'?'Masuk dari '+esc(t.dariNama||namaMitra(t.dari)):'Keluar ke '+esc(t.keNama||namaMitra(t.ke))}</td><td class="wrapc">${esc(t.name)}</td><td class="r">${nf(t.qty)} ${esc(t.unit||'')}</td><td class="r">${rp(t.cost)}</td><td class="r">${rp(t.qty*t.cost)}</td><td><span class="pill ${t.status==='baru'?'low':'ok'}">${t.status==='baru'?'Menunggu diproses':'Selesai'}</span></td><td class="wrapc">${esc(t.note||'')}</td></tr>`).join('')}
+let pubM=null;function jadwalMitra(){if(PERAN!=='owner'||!db||!db.rootDoc||!(Object.keys(S.mitra).length||S.settings.kodeMitra))return;clearTimeout(pubM);pubM=setTimeout(sinkMitra,1500)}
+function sinkMitra(){if(PERAN!=='owner'||!db||!db.rootDoc||!(Object.keys(S.mitra).length||S.settings.kodeMitra))return;const w={};
+  for(const [id,p] of Object.entries(S.products))w[id]={name:p.name,unit:p.unit||'',stock:r2(p.stock),cost:r2(p.cost||0),jenis:p.jenis||'bahan'};
+  for(const id in w)if(stab(w[id])!==stab(S.stokMitra[id])){db.doc('stokMitra/'+id).set(w[id]);S.stokMitra={...S.stokMitra,[id]:w[id]}}
+  for(const id in S.stokMitra)if(!w[id]){db.doc('stokMitra/'+id).delete();const o={...S.stokMitra};delete o[id];S.stokMitra=o}}
+let tfJalan=false;
+async function prosesTransfer(){if(PERAN!=='owner'||!db||tfJalan)return;const td=Object.entries(S.transfer).filter(([,t])=>t.arah==='keluar'&&t.status==='baru');if(!td.length)return;tfJalan=true;let n=0;
+  try{for(const [id,t] of td){if(db.klaim&&!(await db.klaim(id,'transfer')))continue;const p=S.products[t.pid];
+      if(p){await put('products',t.pid,{...p,stock:r2(p.stock-num(t.qty))});await put('stokLog',newId(),{ts:Date.now(),pid:t.pid,name:p.name,unit:p.unit||'',jenis:'transfer',qty:-num(t.qty),cost:num(t.cost),nilai:r2(-num(t.qty)*num(t.cost)),alasan:'',note:'Keluar ke '+(t.keNama||namaMitra(t.ke))+(t.note?' · '+t.note:'')})}
+      await ubahDoc('transfer',id,{status:'selesai',tsProses:Date.now()});n++}
+    sinkMitra();if(n)toast(n+' transfer stok ke toko mitra diproses')}finally{tfJalan=false;render()}}
+function renderPeran(){renderMitra();jadwalMitra();
   $('#pemesan').placeholder=PERAN==='kasir'?'Wajib diisi, misalnya Budi / meja 3':'Opsional, misalnya Budi / meja 3';
   if(PERAN==='kasir'){const h0=new Date().setHours(0,0,0,0),js=Object.entries(S.jual).filter(([,j])=>j.kasirUid===SAYA.uid&&j.ts>=h0).sort((a,b)=>b[1].ts-a[1].ts),sm=f=>js.filter(([,j])=>!j.batal&&f(j)).reduce((a,[,j])=>a+tagihS(j),0);
     $('#tilesSaya').innerHTML=tile('Kasir',esc(SAYA.nama||SAYA.email))+tile('Transaksi',js.filter(([,j])=>!j.batal).length,'hari ini')+tile('Total kotor',rp(sm(()=>1)))+tile('Tunai',rp(sm(j=>j.channel==='offline'&&j.cara!=='qris')))+tile('QRIS',rp(sm(j=>j.channel==='offline'&&j.cara==='qris')))+tile('Aplikasi',rp(sm(j=>j.channel!=='offline')));
@@ -1029,6 +1088,7 @@ const A={
       ['Per Saluran',[['Saluran','Transaksi','Omzet','Diskon','Potongan aplikasi','Diterima bersih','HPP','Laba kotor']].concat(Object.keys(CH).map(c=>[CH[c],pc[c].n,pc[c].sub,r2(pc[c].disk),r2(pc[c].fee),r2(pc[c].net),r2(pc[c].hpp),r2(pc[c].net-pc[c].hpp)]))],
       ['Menu Terjual',[['Menu','Terjual'].concat(Object.values(CH),['Omzet','Laba kotor','Margin %'])].concat(menuTerjual(jl).map(r=>[r.nm,r.q].concat(Object.keys(CH).map(c=>r.ch[c]||0),[r2(r.o),r2(r.l),r.o>0?r2(r.l/r.o*100):0])))],
       ['Pembatalan',[['Waktu jual','Saluran','Pemesan','Kasir','Isi','Nilai','Alasan','Diminta oleh','Dibatalkan oleh','Waktu batal']].concat(PD.batal.map(([,x])=>x).sort((a,b)=>a.ts-b.ts).map(x=>[tg(x.ts),CH[x.channel]||x.channel,x.pemesan||'',x.kasir||'',x.items.map(i=>i.qty+'x '+i.name).join(', '),r2(tagihS(x)),x.batal.alasan||'',x.batal.diminta||'',x.batal.oleh||'Owner',tg(x.batal.ts)]))],
+      ['Transfer',[['Waktu','Arah','Toko','Barang','Jumlah','Satuan','HPP per satuan','Nilai','Status','Catatan']].concat(Object.values(S.transfer).filter(t=>t.ts>=sejak&&t.ts<sampai).sort((a,b)=>a.ts-b.ts).map(t=>[tg(t.ts),t.arah==='masuk'?'Masuk':'Keluar',t.arah==='masuk'?(t.dariNama||namaMitra(t.dari)):(t.keNama||namaMitra(t.ke)),t.name,t.qty,t.unit||'',r2(t.cost),r2(t.qty*t.cost),t.status==='baru'?'Menunggu':'Selesai',t.note||'']))],
       ['Biaya',[['Tanggal','Jenis','Jumlah','Cara bayar','Catatan']].concat(by.map(b=>[b.tgl?tglID(b.tgl):tg(b.ts),BIAYA[b.kategori]||b.kategori,num(b.jumlah),CARA[b.cara]||'',b.note||'']))],
       ['Stok Opname',[['Waktu','Barang','Jenis','Perubahan stok','Satuan','Nilai','Alasan / keterangan']].concat(lg.map(l=>[tg(l.ts),l.name,JLOG[l.jenis]||l.jenis,l.qty,l.unit||'',l.jenis==='produksi'?r2(l.biaya):r2(l.nilai),l.jenis==='produksi'?l.kali+'x resep':[ALASAN[l.alasan]||'',l.note||''].filter(Boolean).join(' · ')]))],
       ['Tutup Kasir',[['Tanggal','Modal laci','Penjualan tunai','Keluar tunai','Seharusnya','Dihitung','Selisih','QRIS','Aplikasi bersih','Catatan']].concat(Object.values(S.kasir).filter(x=>x.tutup).sort((a,b)=>a.tgl<b.tgl?-1:1).map(x=>{const u=x.tutup;return[tglID(x.tgl),num(x.modal),r2(u.tunai),r2(u.keluar||0),r2(u.harus),r2(u.fisik),r2(u.selisih),r2(u.qris),r2(Object.values(u.app||{}).reduce((a,b)=>a+b,0)),u.note||'']}))],
@@ -1132,6 +1192,20 @@ const A={
       await ubahDoc('jual',id,{batal:{ts:Date.now(),alasan:(j.mintaBatal||{}).alasan||''},mintaBatal:null,diproses:true,stokOk:true});sinkPublik();toast('Penjualan dibatalkan dan tercatat'+(s?', stok dikembalikan':''))})},
   tolakBatal(id){if(!S.jual[id])return;run(async()=>{await ubahDoc('jual',id,{mintaBatal:null,tolakBatal:{ts:Date.now()}});toast('Permintaan batal ditolak')})},
   kat(g){katPilih=g;render()},
+  buatKodeMitra(){if(!db||!db.rootDoc)return;const H='ABCDEFGHJKLMNPQRSTUVWXYZ23456789',a=new Uint32Array(8);crypto.getRandomValues(a);const k=[...a].map(x=>H[x%32]).join(''),lama=S.settings.kodeMitra;
+    run(async()=>{await db.rootDoc('undanganMitra/'+k).set({toko:SAYA.uid,nama:S.settings.toko||'',email:SAYA.email||'',ts:Date.now(),dipakai:null});if(lama)await db.rootDoc('undanganMitra/'+lama).delete();S.settings={...S.settings,kodeMitra:k};await db.doc('settings/main').set(S.settings);sinkMitra();toast('Kode mitra: '+k.slice(0,4)+'-'+k.slice(4)+'. Masukkan di aplikasi toko lainnya.')})},
+  hubungkanMitra(){const k=$('#mt-kode').value.toUpperCase().replace(/[^A-Z0-9]/g,'');if(k.length!==8){toast('Kode mitra 8 huruf/angka');return}if(!db||!db.hubungkanMitra)return;
+    run(async()=>{const r=await db.hubungkanMitra(k,{nama:S.settings.toko||'',email:SAYA.email||''});if(r.ok){S.mitra={...S.mitra,[r.toko]:r.data};$('#mt-kode').value='';toast('Terhubung dengan '+(r.data.nama||r.data.email))}else toast(r.pesan)})},
+  putusMitra(u){run(async()=>{await del('mitra',u);toast('Hubungan dengan '+namaMitra(u)+' diputus dari sisi toko ini')})},
+  ambilStok(){const u=$('#tf-mitra').value,pid=$('#tf-barang').value,q=num($('#tf-qty').value),src=stokTersediaMitra(u)[pid],tj=$('#tf-tujuan').value;
+    if(!src){toast('Pilih barang dari toko mitra');return}if(!(q>0)){toast('Isi jumlah');return}if(q>src.stock+1e-9){toast('Stok '+src.name+' di toko mitra hanya '+nf(src.stock));return}
+    const id=newId(),note=$('#tf-note').value.trim(),now=Date.now(),cost=num(src.cost);
+    run(async()=>{await db.lain(u).doc('transfer/'+id).set({arah:'keluar',dari:u,ke:SAYA.uid,keNama:S.settings.toko||SAYA.email||'',pid,name:src.name,unit:src.unit||'',qty:q,cost,note,ts:now,status:'baru'});
+      let lid=tj;if(tj==='baru'||!S.products[tj]){lid=newId();await put('products',lid,{name:src.name,unit:src.unit||'',jenis:src.jenis==='kemasan'?'kemasan':'bahan',stock:0,cost,min:0,price:0})}
+      const p=S.products[lid],sisa=Math.max(p.stock,0),c=(sisa*(p.cost||0)+q*cost)/(sisa+q);await put('products',lid,{...p,stock:r2(p.stock+q),cost:c});
+      await put('stokLog',newId(),{ts:now,pid:lid,name:p.name,unit:p.unit||'',jenis:'transfer',qty:q,cost,nilai:r2(q*cost),alasan:'',note:'Masuk dari '+namaMitra(u)+(note?' · '+note:'')});
+      await put('transfer',id,{arah:'masuk',dari:u,dariNama:namaMitra(u),ke:SAYA.uid,pid:lid,pidAsal:pid,name:p.name,unit:p.unit||'',qty:q,cost,note,ts:now,status:'selesai'});
+      S.mitraTf={...S.mitraTf,[u]:{...(S.mitraTf[u]||{}),[id]:{arah:'keluar',pid,qty:q,status:'baru'}}};$('#tf-qty').value='';$('#tf-note').value='';toast('Stok '+p.name+' +'+nf(q)+' dari '+namaMitra(u))})},
   modeHabis(){modeHabis=!modeHabis;render()},
   togHabis(id){const m=S.menus[id];if(!m)return;const hb=habisHari(id);run(async()=>{if(hb)await del('habis',id);else await put('habis',id,{tgl:hariIni(),oleh:SAYA.nama||SAYA.email||'owner',ts:Date.now()});toast(m.name+(hb?' tersedia lagi':' ditandai habis hari ini'))})},
   togSembunyi(id){const m=S.menus[id];if(!m)return;run(async()=>{await put('menus',id,{...m,sembunyi:!m.sembunyi});toast(m.name+(m.sembunyi?' ditampilkan lagi di kasir':' disembunyikan dari kasir'))})},
@@ -1289,6 +1363,7 @@ $('#q-foto').addEventListener('change',async e=>{const f=e.target.files[0];e.tar
   try{const bm=await createImageBitmap(f),r=await new BarcodeDetector({formats:['qr_code']}).detect(bm);if(!r.length){toast('QR tidak terbaca. Pakai foto yang lebih jelas dan rata.');return}
     $('#q-teks').value=r[0].rawValue;statusQris();toast('QRIS terbaca. Periksa nama toko, lalu Simpan QRIS.')}catch(x){toast('Gagal membaca QR: '+x.message)}});
 $('#cari').addEventListener('input',render);$('#diskon').addEventListener('input',render);
+['tf-mitra','tf-barang'].forEach(i=>$('#'+i).addEventListener('change',()=>{$('#tf-tujuan').dataset.src='';isiAmbil(true)}));['tf-qty'].forEach(i=>$('#'+i).addEventListener('input',prevAmbil));
 $('#dlgBForm').addEventListener('submit',e=>{e.preventDefault();const id=$('#dlgB').dataset.id,al=$('#bt-alasan').value.trim();if(!al)return;if($('#dlgB').dataset.mode==='owner'){$('#dlgB').close();A.batalJualKonfirm(id,al);return}if(!S.jual[id])return;$('#dlgB').close();run(async()=>{await ubahDoc('jual',id,{mintaBatal:{alasan:al,ts:Date.now()}});toast('Permintaan batal dikirim ke owner')})});$('#diskonT').addEventListener('change',render);
 ['so-prod','so-jenis','so-qty','so-fisik'].forEach(i=>$('#'+i).addEventListener('input',prevStok));
 $('#kk-fisik').addEventListener('input',renderKas);
@@ -1333,13 +1408,18 @@ function boot(){
     $('#l-err').textContent='';(daftar?auth.createUserWithEmailAndPassword(em,pw):auth.signInWithEmailAndPassword(em,pw)).catch(e=>{$('#l-err').textContent=AERR[e.code]||'Gagal masuk ('+(e.code||'tidak diketahui')+').'})};
   $('#loginForm').addEventListener('submit',e=>{e.preventDefault();masuk(false)});$('#l-daftar').addEventListener('click',()=>masuk(true));
   let unsub=[];
-  const KOLO=['products','menus','purchases','sales','pesanan','biaya','stokLog','kasir','jual','anggota','kodeKasir','stok','publik','rekap','habis'];
+  const KOLO=['products','menus','purchases','sales','pesanan','biaya','stokLog','kasir','jual','anggota','kodeKasir','stok','publik','rekap','habis','mitra','transfer','stokMitra'];
   const kosong=()=>{KOLO.concat(['integrasi']).forEach(c=>S[c]={});S.gambar='';S.logo='';S.settings=mergeSet({})};
   const buatDb=(uid,base)=>({doc:p=>{const r=fs.doc(base+p);return{update:d=>{r.update(d).catch(gagal);return Promise.resolve()},set:d=>{r.set(d).catch(gagal);return Promise.resolve()},delete:()=>{r.delete().catch(gagal);return Promise.resolve()},onSnapshot:(a,b)=>r.onSnapshot(a,b)}},collection:c=>fs.collection(base+c),
     rootDoc:p=>{const r=fs.doc(p);return{set:d=>{r.set(d).catch(gagal);return Promise.resolve()},delete:()=>{r.delete().catch(gagal);return Promise.resolve()}}},
+    lain:t=>({doc:p=>{const r=fs.doc('toko/'+t+'/'+p);return{set:d=>{r.set(d).catch(gagal);return Promise.resolve()}}}}),
+    hubungkanMitra:async(k,me)=>{try{const ref=fs.doc('undanganMitra/'+k),d=await ref.get({source:'server'});if(!d.exists)return{ok:false,pesan:'Kode mitra tidak ditemukan'};const x=d.data();
+        if(x.toko===uid)return{ok:false,pesan:'Itu kode toko ini sendiri. Masukkan di akun toko yang lain.'};if(x.dipakai&&x.dipakai!==uid)return{ok:false,pesan:'Kode sudah dipakai. Buat kode baru.'};
+        const ts=Date.now(),dt={kode:k,nama:x.nama||'',email:x.email||'',ts},bt=fs.batch();bt.update(ref,{dipakai:uid});bt.set(fs.doc('toko/'+x.toko+'/mitra/'+uid),{kode:k,nama:me.nama,email:me.email,ts});bt.set(fs.doc(base+'mitra/'+x.toko),dt);await bt.commit();return{ok:true,toko:x.toko,data:dt}}
+      catch(e){return{ok:false,pesan:e&&e.code==='permission-denied'?'Ditolak server: pasang aturan Firebase terbaru.':'Gagal menghubungkan. Periksa internet.'}}},
     ambil:(col,a,b)=>fs.collection(base+col).where('ts','>=',a).where('ts','<',b).get({source:'server'}).then(q=>{const o={};q.docs.forEach(x=>o[x.id]=x.data());return o}),
     awalJual:A=>fs.collection(base+'sales').where('ts','<',A).orderBy('ts').limit(1).get({source:'server'}).then(q=>q.docs.length?q.docs[0].data().ts:null),
-    klaim:id=>{if(!navigator.onLine)return Promise.resolve(false);const r=fs.doc(base+'jual/'+id);return fs.runTransaction(async tx=>{const d=await tx.get(r);if(!d.exists||d.data().diproses)return false;tx.update(r,{diproses:true,tsProses:Date.now()});return true}).catch(()=>false)}});
+    klaim:(id,col)=>{if(!navigator.onLine)return Promise.resolve(false);const r=fs.doc(base+(col||'jual')+'/'+id);return fs.runTransaction(async tx=>{const d=await tx.get(r);if(!d.exists||d.data().diproses)return false;tx.update(r,{diproses:true,tsProses:Date.now()});return true}).catch(()=>false)}});
   const onErr=e=>{$('#sync').textContent=e&&e.code==='permission-denied'?'Akses data ditolak: aturan Firestore belum dipasang atau akses kasir dicabut.':'Sambungan data terputus. Muat ulang halaman.'};
   const kueri=col=>{const c=db.collection(col),now=Date.now();
     if(col==='sales')return c.where('ts','>=',LIVE_A()).orderBy('ts','desc');
@@ -1347,15 +1427,21 @@ function boot(){
     if(col==='pesanan')return c.where('ts','>=',now-14*864e5).orderBy('ts','desc');
     if(['purchases','biaya','stokLog'].includes(col))return c.orderBy('ts','desc').limit(5000);
     if(col==='kasir')return c.orderBy('ts','desc').limit(400);
+    if(col==='transfer')return c.orderBy('ts','desc').limit(3000);
     return c.limit(3000)};
   const langgan=(cols,setelah)=>cols.forEach(col=>{const q=kueri(col);
-    unsub.push(q.onSnapshot(s=>{if(busy&&col!=='jual')return;const o={};s.docs.forEach(x=>o[x.id]=x.data());S[col]=o;if(setelah)setelah(col);render()},onErr))});
+    unsub.push(q.onSnapshot(s=>{if(busy&&!['jual','mitra','transfer'].includes(col))return;const o={};s.docs.forEach(x=>o[x.id]=x.data());S[col]=o;if(setelah)setelah(col);render()},onErr))});
   const tampil=w=>{$('#login').hidden=w!=='login';$('#tunggu').hidden=w!=='tunggu';$('#app').hidden=w!=='app'};
   function mulaiOwner(u){PERAN='owner';document.body.classList.remove('kasir');const base='toko/'+u.uid+'/';db=buatDb(u.uid,base);
     simpanRahasia=(k,val)=>{const ref=fs.doc('kunci/'+u.uid+'/platform/'+k);ref.set({rahasia:val,ts:Date.now()}).then(()=>ref.get({source:'server'})).then(()=>toast('PERINGATAN: kunci rahasia masih bisa dibaca dari aplikasi. Aturan Firestore belum benar.'),e=>{if(e&&e.code==='permission-denied')toast('Kunci tersimpan dan terverifikasi tidak bisa dibaca dari aplikasi.');else gagal(e)});return Promise.resolve()};
     unsub.push(db.collection('integrasi').onSnapshot(s=>{const o={};s.docs.forEach(x=>o[x.id]=x.data());S.integrasi=o;render()},onErr));
     mode='cloud';tampil('app');
-    let pT=null;langgan(KOLO,col=>{if(col==='jual'||col==='products'){clearTimeout(pT);pT=setTimeout(()=>{if(navigator.onLine)prosesJualKasir()},800)}});
+    let pT=null,tT2=null,mUn={};
+    const langMitra=()=>{const ada=Object.keys(S.mitra);Object.keys(mUn).forEach(t=>{if(!ada.includes(t)){mUn[t].forEach(f=>f());delete mUn[t];const a={...S.mitraStok};delete a[t];S.mitraStok=a}});
+      ada.forEach(t=>{if(mUn[t])return;mUn[t]=[fs.collection('toko/'+t+'/stokMitra').limit(3000).onSnapshot(q=>{const o={};q.docs.forEach(x=>o[x.id]=x.data());S.mitraStok={...S.mitraStok,[t]:o};render()},()=>{}),
+        fs.collection('toko/'+t+'/transfer').where('status','==','baru').onSnapshot(q=>{const o={};q.docs.forEach(x=>o[x.id]=x.data());S.mitraTf={...S.mitraTf,[t]:o};render()},()=>{})];unsub.push(()=>{(mUn[t]||[]).forEach(f=>f());delete mUn[t]})})};
+    langgan(KOLO,col=>{if(col==='jual'||col==='products'){clearTimeout(pT);pT=setTimeout(()=>{if(navigator.onLine)prosesJualKasir()},800)}
+      if(col==='transfer'||col==='products'){clearTimeout(tT2);tT2=setTimeout(()=>{if(navigator.onLine)prosesTransfer()},900)}if(col==='mitra')langMitra()});db.langMitra=langMitra;
     unsub.push(db.doc('settings/main').onSnapshot(s=>{if(s.exists){S.settings=mergeSet(s.data());fillSettings()}render()},onErr));
     ['gambar','logo'].forEach(k=>unsub.push(db.doc('settings/'+k).onSnapshot(s=>{S[k]=s.exists?(s.data().data||''):'';render()},onErr)));
     setTimeout(bangunRekap,5000);render()}
